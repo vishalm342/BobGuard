@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   LayoutDashboard,
   ShieldAlert,
   ShieldCheck,
   FileCode,
   Terminal,
-  ExternalLink,
   ChevronRight,
   AlertTriangle,
   CheckCircle,
@@ -30,62 +29,145 @@ import Vulnerabilities from './Vulnerabilities'
 import Reports from './Reports'
 import Notifications from './Notifications'
 
-// ── Data ────────────────────────────────────────────────────────────────────
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
 
-const VULNERABILITIES = [
-  {
-    id: 1,
-    title: 'SQL Injection in user login',
-    severity: 'Critical',
-    category: 'A03:2021-Injection',
-    file: 'src/auth/login.js',
-    line: 45,
-    description: 'The query concatenates user input directly into the SQL string, allowing for potential data extraction or bypass.',
-    fix: 'Use parameterized queries with the database driver.',
-    codeSnippet: "const query = `SELECT * FROM users WHERE email = '${email}'`;",
-    fixSnippet: "const query = 'SELECT * FROM users WHERE email = ?';\nconst results = await db.execute(query, [email]);",
-    reasoning: "By using parameterized queries (also known as prepared statements), we separate the SQL code from the data. This ensures that the user-provided 'email' is always treated as data and never as executable code, directly addressing OWASP A03:2021-Injection."
-  },
-  {
-    id: 2,
-    title: 'Broken Access Control on profile update',
-    severity: 'High',
-    category: 'A01:2021-Broken Access Control',
-    file: 'src/api/user.py',
-    line: 112,
-    description: 'The endpoint does not verify if the requesting user has permission to modify the target profile ID.',
-    fix: 'Implement ownership validation middleware.',
-    codeSnippet: "def update_profile(user_id, data):\n    db.update('users', data, id=user_id)",
-    fixSnippet: "def update_profile(current_user, target_id, data):\n    if current_user.id != target_id and not current_user.is_admin:\n        raise Unauthorized()\n    db.update('users', data, id=target_id)",
-    reasoning: "This fix implements a mandatory access control check satisfying OWASP A01:2021, preventing insecure direct object references (IDOR)."
-  },
-  {
-    id: 3,
-    title: 'Sensitive Data Exposure in logs',
-    severity: 'Medium',
-    category: 'A02:2021-Cryptographic Failures',
-    file: 'src/config/logger.ts',
-    line: 22,
-    description: 'Application secrets and API keys are being logged in plain text during initialization.',
-    fix: 'Use a sanitization helper to mask sensitive fields before logging.',
-    codeSnippet: "logger.info('Connected with config: ' + JSON.stringify(config));",
-    fixSnippet: "logger.info('Connected with config: ' + maskSecrets(config));",
-    reasoning: "Masking secrets before logging complies with OWASP A02:2021, ensuring PII and credentials remain confidential."
-  },
-  {
-    id: 4,
-    title: 'Outdated vulnerable dependency',
-    severity: 'Low',
-    category: 'A06:2021-Vulnerable and Outdated Components',
-    file: 'package.json',
-    line: 14,
-    description: 'The version of "axios" being used has a known SSRF vulnerability.',
-    fix: 'Update axios to version 1.6.0 or higher.',
-    codeSnippet: '"axios": "0.21.1"',
-    fixSnippet: '"axios": "^1.6.0"',
-    reasoning: "Updating axios patches a critical SSRF flaw, satisfying OWASP A06:2021."
+// ── Data helpers ────────────────────────────────────────────────────────────
+
+const normalizeSeverity = (severity) => {
+  const value = String(severity || '').trim().toLowerCase()
+
+  if (value.startsWith('crit')) return 'Critical'
+  if (value.startsWith('high')) return 'High'
+  if (value.startsWith('med')) return 'Medium'
+  if (value.startsWith('low')) return 'Low'
+  if (value.startsWith('info')) return 'Info'
+
+  return severity ? String(severity) : 'Medium'
+}
+
+const normalizeLine = (line) => {
+  const parsed = Number(line)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const splitFileAndLine = (finding) => {
+  const candidates = [
+    finding.file,
+    finding.file_path,
+    finding.filePath,
+    finding.path,
+    finding.location,
+    finding.source_file,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const text = String(candidate)
+    const match = text.match(/^(.*?):(\d+)$/)
+
+    if (match) {
+      return { file: match[1], line: normalizeLine(match[2]) }
+    }
+
+    return { file: text, line: normalizeLine(finding.line || finding.line_number || finding.lineNumber) }
   }
-]
+
+  return {
+    file: 'Unknown file',
+    line: normalizeLine(finding.line || finding.line_number || finding.lineNumber),
+  }
+}
+
+const normalizeFinding = (finding, index = 0) => {
+  const { file, line } = splitFileAndLine(finding)
+  const title = finding.title || finding.name || finding.rule_name || `${finding.rule_id || 'Finding'} detected`
+  const suggestion = finding.suggestion || finding.fix || finding.fix_text || finding.fixText || finding.recommendation || finding.remediation || finding.remediation_text || finding.suggested_fix || finding.suggestedFix || finding.fixSnippet || ''
+
+  return {
+    id: finding.id || finding.rule_id || finding.ruleId || `${file}:${line || index}`,
+    title,
+    severity: normalizeSeverity(finding.severity),
+    category: finding.owasp_category || finding.category || finding.owasp || 'Uncategorized',
+    file,
+    line,
+    description: finding.description || finding.summary || finding.message || 'No description provided by the scan endpoint.',
+    suggestion,
+    codeSnippet: finding.codeSnippet || finding.code_snippet || finding.sourceSnippet || finding.original_code || finding.snippet || '',
+    fixSnippet: finding.fixSnippet || finding.fix_snippet || finding.fixed_snippet || suggestion,
+    reasoning: finding.reasoning || finding.explanation || finding.details || '',
+    ruleId: finding.rule_id || finding.ruleId || finding.id || null,
+    raw: finding,
+  }
+}
+
+const extractFindings = (payload) => {
+  const candidates = [
+    payload?.findings,
+    payload?.vulnerabilities,
+    payload?.issues,
+    payload?.results,
+    payload?.data,
+    payload,
+  ]
+
+  const rawFindings = candidates.find(candidate => Array.isArray(candidate)) || []
+  return rawFindings.map((finding, index) => normalizeFinding(finding, index))
+}
+
+const isLocalSource = (source) => {
+  if (!source) return false
+  return !/^https?:\/\//i.test(source) && !source.includes('github.com')
+}
+
+const buildScanEndpoints = (source) => {
+  const primary = isLocalSource(source) ? '/scan-local' : '/scan'
+  const fallback = primary === '/scan' ? '/scan-local' : '/scan'
+  return [primary, fallback]
+}
+
+const parseResponseBody = async (response) => {
+  const text = await response.text()
+
+  if (!text) return {}
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { message: text }
+  }
+}
+
+const fetchScanResults = async (source, signal) => {
+  let lastError = null
+
+  for (const endpoint of buildScanEndpoints(source)) {
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl: source, repo_url: source, source }),
+        signal,
+      })
+
+      if (!response.ok) {
+        const body = await parseResponseBody(response)
+        throw new Error(body?.message || `Request failed with ${response.status}`)
+      }
+
+      const payload = await parseResponseBody(response)
+      return {
+        endpoint,
+        findings: extractFindings(payload),
+        payload,
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') throw error
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('Unable to load scan results.')
+}
 
 const THREAT_FEED = [
   { id: 1, msg: 'New CVE-2024-3094 detected in xz-utils dependency', severity: 'Critical', time: '2m ago' },
@@ -205,21 +287,83 @@ const Dashboard = ({ repoUrl }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [findings, setFindings] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [scanEndpoint, setScanEndpoint] = useState('')
+
+  const loadResults = async () => {
+    const controller = new AbortController()
+
+    setIsRefreshing(true)
+    setIsLoading(true)
+    setLoadError('')
+
+    try {
+      const { findings: nextFindings, endpoint } = await fetchScanResults(repoUrl, controller.signal)
+      setFindings(nextFindings)
+      setScanEndpoint(endpoint)
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setLoadError(error.message || 'Unable to load scan results.')
+        setFindings([])
+        setScanEndpoint('')
+      }
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+
+    return () => controller.abort()
+  }
+
+  useEffect(() => {
+    loadResults()
+  }, [repoUrl])
+
+  useEffect(() => {
+    if (!findings.length) {
+      setSelectedVuln(null)
+      return
+    }
+
+    if (!selectedVuln || !findings.some(vuln => vuln.id === selectedVuln.id)) {
+      setSelectedVuln(findings[0])
+    }
+  }, [findings, selectedVuln])
 
   const handleRefresh = () => {
-    setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 1200)
+    loadResults()
   }
 
   const repoName = repoUrl?.split('/').slice(-2).join('/') || 'Unknown Repo'
 
-  const filteredVulns = VULNERABILITIES.filter(v =>
+  const filteredVulns = findings.filter(v =>
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.category.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const overviewStats = useMemo(() => {
+    const critical = findings.filter(vuln => vuln.severity === 'Critical').length
+    const high = findings.filter(vuln => vuln.severity === 'High').length
+    const categories = new Set(findings.map(vuln => vuln.category).filter(Boolean)).size
+    const withSuggestions = findings.filter(vuln => vuln.suggestion || vuln.fixSnippet).length
+
+    return {
+      total: findings.length,
+      critical,
+      categories,
+      withSuggestions,
+      actionableRate: findings.length ? Math.round((withSuggestions / findings.length) * 100) : 0,
+      high,
+    }
+  }, [findings])
+
+  const scanLabel = scanEndpoint === '/scan-local' ? 'Local scan' : scanEndpoint === '/scan' ? 'Remote scan' : 'Scan pending'
+  const hasSearchResults = filteredVulns.length > 0
+
   const navItems = [
     { id: 'overview', icon: <LayoutDashboard size={17} />, label: 'Overview' },
-    { id: 'vulnerabilities', icon: <ShieldAlert size={17} />, label: 'Vulnerabilities', badge: VULNERABILITIES.filter(v => v.severity === 'Critical').length },
+    { id: 'vulnerabilities', icon: <ShieldAlert size={17} />, label: 'Vulnerabilities', badge: overviewStats.critical || undefined },
     { id: 'notifications', icon: <Bell size={17} />, label: 'Notifications', badge: 4 },
     { id: 'codebase', icon: <FileCode size={17} />, label: 'Codebase View' },
     { id: 'reports', icon: <BarChart size={17} />, label: 'Reports' },
@@ -264,6 +408,7 @@ const Dashboard = ({ repoUrl }) => {
         <div className="p-4 rounded-xl bg-white/3 border border-white/5">
           <div className="text-[10px] text-gray-600 uppercase font-bold tracking-widest mb-2">Scanning</div>
           <div className="text-xs font-mono text-blue-300 truncate">{repoName}</div>
+          <div className="mt-2 text-[10px] text-gray-500 uppercase tracking-[0.2em]">{scanLabel}</div>
         </div>
 
         {/* MCP Status */}
@@ -276,9 +421,9 @@ const Dashboard = ({ repoUrl }) => {
             <div className="text-[11px] text-green-400 font-semibold mb-3">Bob is Connected</div>
             <div className="space-y-1.5">
               {[
-                { label: 'Files Indexed', value: '1,284' },
-                { label: 'Functions Mapped', value: '9,471' },
-                { label: 'OWASP Coverage', value: '94%' },
+                { label: 'Findings', value: String(overviewStats.total) },
+                { label: 'Critical', value: String(overviewStats.critical) },
+                { label: 'Fixable', value: `${overviewStats.actionableRate}%` },
               ].map(m => (
                 <div key={m.label} className="flex justify-between text-[10px]">
                   <span className="text-gray-600">{m.label}</span>
@@ -299,6 +444,9 @@ const Dashboard = ({ repoUrl }) => {
             <div>
               <h1 className="text-base font-bold">Project Analysis</h1>
               <div className="text-xs text-gray-500 font-mono">{repoName}</div>
+            </div>
+            <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/8 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">
+              {scanLabel}
             </div>
             <ThreatFeedTicker />
           </div>
@@ -356,10 +504,10 @@ const Dashboard = ({ repoUrl }) => {
               <motion.div key="overview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
                 {/* Stat Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
-                  <StatCard label="Total Risks" value="12" icon={<ShieldAlert size={20} className="text-red-400" />} color="red" trend="+2" subtext="vs last scan" />
-                  <StatCard label="OWASP Categories" value="6" icon={<BarChart size={20} className="text-blue-400" />} color="blue" />
-                  <StatCard label="Ready to Fix" value="8" icon={<CheckCircle size={20} className="text-green-400" />} color="green" trend="67%" />
-                  <StatCard label="Critical Issues" value="2" icon={<AlertTriangle size={20} className="text-orange-400" />} color="orange" subtext="Immediate action" />
+                  <StatCard label="Total Risks" value={String(overviewStats.total)} icon={<ShieldAlert size={20} className="text-red-400" />} color="red" trend={overviewStats.total ? `${overviewStats.high + overviewStats.critical}` : undefined} subtext="vs last scan" />
+                  <StatCard label="OWASP Categories" value={String(overviewStats.categories)} icon={<BarChart size={20} className="text-blue-400" />} color="blue" />
+                  <StatCard label="Ready to Fix" value={String(overviewStats.withSuggestions)} icon={<CheckCircle size={20} className="text-green-400" />} color="green" trend={overviewStats.actionableRate ? `${overviewStats.actionableRate}%` : undefined} />
+                  <StatCard label="Critical Issues" value={String(overviewStats.critical)} icon={<AlertTriangle size={20} className="text-orange-400" />} color="orange" subtext="Immediate action" />
                 </div>
 
                 {/* Split View */}
@@ -370,41 +518,79 @@ const Dashboard = ({ repoUrl }) => {
                       <h3 className="text-lg font-bold">Identified Vulnerabilities</h3>
                       <span className="text-xs text-gray-500">{filteredVulns.length} found</span>
                     </div>
-                    <motion.div
-                      variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } }}
-                      initial="hidden"
-                      animate="show"
-                      className="space-y-3"
-                    >
-                      {filteredVulns.map(vuln => (
-                        <motion.div
-                          key={vuln.id}
-                          variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
-                          whileHover={{ scale: 1.01, x: 2 }}
-                          onClick={() => setSelectedVuln(vuln)}
-                          className={`p-5 rounded-2xl border cursor-pointer group transition-all ${
-                            selectedVuln?.id === vuln.id
-                              ? 'bg-blue-600/8 border-blue-500/40 ring-1 ring-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.08)]'
-                              : 'bg-white/2 border-white/5 hover:border-white/10 hover:bg-white/4'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-2.5">
-                            <div className="flex items-center gap-2.5">
-                              <SeverityBadge severity={vuln.severity} />
-                              <h4 className="font-semibold text-sm text-white group-hover:text-blue-300 transition-colors">{vuln.title}</h4>
+                    {isLoading && !findings.length ? (
+                      <div className="space-y-3">
+                        {[0, 1, 2].map(index => (
+                          <div key={index} className="p-5 rounded-2xl border border-white/5 bg-white/2 animate-pulse">
+                            <div className="h-4 w-40 rounded bg-white/10 mb-4" />
+                            <div className="h-3 w-3/4 rounded bg-white/10 mb-3" />
+                            <div className="h-3 w-1/2 rounded bg-white/10" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : loadError && !findings.length ? (
+                      <div className="p-6 rounded-3xl border border-red-500/20 bg-red-500/5 text-sm text-red-200">
+                        <div className="font-semibold mb-2">Scan failed</div>
+                        <p className="text-red-100/70 mb-4">{loadError}</p>
+                        <button onClick={handleRefresh} className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-red-100 text-xs font-bold uppercase tracking-widest">
+                          Retry scan
+                        </button>
+                      </div>
+                    ) : hasSearchResults ? (
+                      <motion.div
+                        variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } }}
+                        initial="hidden"
+                        animate="show"
+                        className="space-y-3"
+                      >
+                        {filteredVulns.map(vuln => (
+                          <motion.div
+                            key={vuln.id}
+                            variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
+                            whileHover={{ scale: 1.01, x: 2 }}
+                            onClick={() => setSelectedVuln(vuln)}
+                            className={`p-5 rounded-2xl border cursor-pointer group transition-all ${
+                              selectedVuln?.id === vuln.id
+                                ? 'bg-blue-600/8 border-blue-500/40 ring-1 ring-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.08)]'
+                                : 'bg-white/2 border-white/5 hover:border-white/10 hover:bg-white/4'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center gap-2.5">
+                                <SeverityBadge severity={vuln.severity} />
+                                <h4 className="font-semibold text-sm text-white group-hover:text-blue-300 transition-colors">{vuln.title}</h4>
+                              </div>
+                              <ChevronRight
+                                size={16}
+                                className={`text-gray-600 group-hover:text-gray-400 transition-all ${selectedVuln?.id === vuln.id ? 'rotate-90 text-blue-400' : ''}`}
+                              />
                             </div>
-                            <ChevronRight
-                              size={16}
-                              className={`text-gray-600 group-hover:text-gray-400 transition-all ${selectedVuln?.id === vuln.id ? 'rotate-90 text-blue-400' : ''}`}
-                            />
-                          </div>
-                          <div className="flex items-center gap-5 text-xs text-gray-600 font-mono">
-                            <span className="flex items-center gap-1.5"><Terminal size={12} /> {vuln.file}:{vuln.line}</span>
-                            <span className="flex items-center gap-1.5"><ShieldCheck size={12} /> {vuln.category}</span>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </motion.div>
+                            <div className="flex flex-wrap items-center gap-5 text-xs text-gray-600 font-mono mb-3">
+                              <span className="flex items-center gap-1.5"><Terminal size={12} /> {vuln.file}{vuln.line !== null ? `:${vuln.line}` : ''}</span>
+                              <span className="flex items-center gap-1.5"><ShieldCheck size={12} /> {vuln.category}</span>
+                            </div>
+                            <p className="text-sm text-gray-300/80 leading-relaxed mb-2">{vuln.description}</p>
+                            {vuln.suggestion && (
+                              <p className="text-xs text-blue-300/80 leading-relaxed">
+                                Suggestion: {vuln.suggestion}
+                              </p>
+                            )}
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    ) : (
+                      <div className="p-8 rounded-3xl border border-dashed border-white/10 bg-white/2 text-center text-gray-500">
+                        <ShieldCheck size={32} className="mx-auto mb-3 opacity-60" />
+                        <h4 className="text-base font-bold text-gray-300 mb-2">
+                          {searchQuery ? 'No matching findings' : 'No findings yet'}
+                        </h4>
+                        <p className="text-sm max-w-md mx-auto leading-relaxed">
+                          {searchQuery
+                            ? 'Try a broader search term or clear the filter to inspect the full scan output.'
+                            : 'The scan endpoint returned no actionable findings for this repository.'}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Detail Panel */}
@@ -423,6 +609,12 @@ const Dashboard = ({ repoUrl }) => {
                             onApplyFix={v => console.log('Applying fix for:', v.title)}
                           />
                         </motion.div>
+                      ) : isLoading && findings.length ? (
+                        <div className="h-[520px] flex flex-col items-center justify-center text-center p-8 rounded-3xl border border-white/8 bg-white/[0.02] text-gray-500">
+                          <div className="w-10 h-10 rounded-full border-2 border-blue-500/30 border-t-blue-400 animate-spin mb-4" />
+                          <h3 className="text-base font-bold mb-2 text-gray-300">Refreshing findings</h3>
+                          <p className="text-sm max-w-[220px] leading-relaxed">Bob is updating the dashboard with the latest scan output.</p>
+                        </div>
                       ) : (
                         <motion.div
                           initial={{ opacity: 0 }}
@@ -447,7 +639,17 @@ const Dashboard = ({ repoUrl }) => {
               <motion.div key="vulnerabilities" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
                 <div className="flex gap-6">
                   <div className="flex-1 min-w-0">
-                    <Vulnerabilities vulnerabilities={filteredVulns} onSelect={setSelectedVuln} selectedId={selectedVuln?.id} />
+                    {isLoading && !findings.length ? (
+                      <div className="h-[420px] rounded-3xl border border-white/8 bg-white/[0.02] animate-pulse" />
+                    ) : loadError && !findings.length ? (
+                      <div className="p-8 rounded-3xl border border-red-500/20 bg-red-500/5 text-red-100">
+                        <h3 className="text-lg font-bold mb-2">Unable to load scan results</h3>
+                        <p className="text-sm text-red-100/70 mb-4">{loadError}</p>
+                        <button onClick={handleRefresh} className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-xs font-bold uppercase tracking-widest">Retry</button>
+                      </div>
+                    ) : (
+                      <Vulnerabilities vulnerabilities={filteredVulns} onSelect={setSelectedVuln} selectedId={selectedVuln?.id} />
+                    )}
                   </div>
                   <div className="w-[460px] shrink-0">
                     <AnimatePresence mode="wait">
@@ -464,6 +666,8 @@ const Dashboard = ({ repoUrl }) => {
                             onApplyFix={v => console.log('Applying fix for:', v.title)}
                           />
                         </motion.div>
+                      ) : isLoading && findings.length ? (
+                        <div className="h-[600px] rounded-3xl border border-white/8 bg-white/[0.02] animate-pulse" />
                       ) : (
                         <div className="h-[600px] flex flex-col items-center justify-center text-center p-8 rounded-3xl border border-dashed border-white/8 text-gray-600">
                           <div className="float mb-6"><ShieldCheck size={56} className="opacity-15" /></div>

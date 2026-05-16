@@ -1,8 +1,8 @@
-import React from 'react'
 import { motion } from 'framer-motion'
 import { ChevronRight, Terminal, ShieldCheck, AlertTriangle } from 'lucide-react'
 
 const SeverityBadge = ({ severity }) => {
+  const label = String(severity || '').trim() || 'Medium'
   const colors = {
     'Critical': 'bg-red-500 text-white',
     'High': 'bg-orange-500 text-white',
@@ -11,7 +11,7 @@ const SeverityBadge = ({ severity }) => {
   }
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${colors[severity] || 'bg-gray-500'}`}>
-      {severity}
+      {label}
     </span>
   )
 }
@@ -82,16 +82,21 @@ const Vulnerabilities = ({ vulnerabilities, onSelect, selectedId }) => {
               <div className="flex items-center gap-6 text-sm text-gray-500 font-mono">
                 <div className="flex items-center gap-2">
                   <Terminal size={14} className="text-blue-500/60" />
-                  <span>{vuln.file} <span className="text-gray-700">:</span> {vuln.line}</span>
+                  <span>{vuln.file}{vuln.line !== null && vuln.line !== undefined ? <><span className="text-gray-700">:</span> {vuln.line}</> : null}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={14} className="text-cyan-500/60" />
                   <span>{vuln.category}</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-600 italic">
-                  {vuln.description.substring(0, 60)}...
-                </div>
               </div>
+              <p className="mt-3 text-sm text-gray-300/75 leading-relaxed">
+                {vuln.description}
+              </p>
+              {vuln.suggestion && (
+                <p className="mt-2 text-xs text-blue-300/80 leading-relaxed">
+                  Suggestion: {vuln.suggestion}
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-4">
