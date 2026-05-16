@@ -8,16 +8,11 @@ import {
   ChevronRight,
   AlertTriangle,
   CheckCircle,
-  GitPullRequest,
   Search,
   Filter,
   BarChart,
   Activity,
-  Zap,
-  Lock,
-  Eye,
   Bell,
-  Settings,
   RefreshCw,
   TrendingUp,
   Cpu
@@ -119,8 +114,9 @@ const isLocalSource = (source) => {
   return !/^https?:\/\//i.test(source) && !source.includes('github.com')
 }
 
-const buildScanEndpoints = (source) => {
-  const primary = isLocalSource(source) ? '/scan-local' : '/scan'
+const buildScanEndpoints = (source, preferredMode) => {
+  const preferredIsLocal = preferredMode === 'local' || (!preferredMode && isLocalSource(source))
+  const primary = preferredIsLocal ? '/scan-local' : '/scan'
   const fallback = primary === '/scan' ? '/scan-local' : '/scan'
   return [primary, fallback]
 }
@@ -137,10 +133,10 @@ const parseResponseBody = async (response) => {
   }
 }
 
-const fetchScanResults = async (source, signal) => {
+const fetchScanResults = async (source, signal, preferredMode) => {
   let lastError = null
 
-  for (const endpoint of buildScanEndpoints(source)) {
+  for (const endpoint of buildScanEndpoints(source, preferredMode)) {
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
@@ -283,7 +279,7 @@ const ThreatFeedTicker = () => {
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
 const Dashboard = ({ repoUrl }) => {
-  const [selectedVuln, setSelectedVuln] = useState(null)
+  const [selectedVulnId, setSelectedVulnId] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -291,16 +287,27 @@ const Dashboard = ({ repoUrl }) => {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [scanEndpoint, setScanEndpoint] = useState('')
+  const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
+  const [localFolderPath, setLocalFolderPath] = useState('')
+  const [scanSource, setScanSource] = useState(repoUrl || '')
 
-  const loadResults = async () => {
+  const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
     const controller = new AbortController()
 
     setIsRefreshing(true)
     setIsLoading(true)
     setLoadError('')
 
+    if (!source) {
+      setFindings([])
+      setScanEndpoint('')
+      setIsLoading(false)
+      setIsRefreshing(false)
+      return () => controller.abort()
+    }
+
     try {
-      const { findings: nextFindings, endpoint } = await fetchScanResults(repoUrl, controller.signal)
+      const { findings: nextFindings, endpoint } = await fetchScanResults(source, controller.signal, preferredMode)
       setFindings(nextFindings)
       setScanEndpoint(endpoint)
     } catch (error) {
@@ -317,30 +324,38 @@ const Dashboard = ({ repoUrl }) => {
     return () => controller.abort()
   }
 
-  useEffect(() => {
-    loadResults()
-  }, [repoUrl])
-
-  useEffect(() => {
-    if (!findings.length) {
-      setSelectedVuln(null)
-      return
-    }
-
-    if (!selectedVuln || !findings.some(vuln => vuln.id === selectedVuln.id)) {
-      setSelectedVuln(findings[0])
-    }
-  }, [findings, selectedVuln])
-
   const handleRefresh = () => {
-    loadResults()
+    loadResults({ source: scanSource, preferredMode: scanEndpoint === '/scan-local' ? 'local' : 'remote' })
   }
 
-  const repoName = repoUrl?.split('/').slice(-2).join('/') || 'Unknown Repo'
+  const handleRemoteSubmit = (event) => {
+    event.preventDefault()
+    const nextSource = remoteRepoUrl.trim()
+    if (!nextSource) return
+    setScanSource(nextSource)
+    setActiveTab('overview')
+    loadResults({ source: nextSource, preferredMode: 'remote' })
+  }
+
+  const handleLocalSubmit = (event) => {
+    event.preventDefault()
+    const nextSource = localFolderPath.trim()
+    if (!nextSource) return
+    setScanSource(nextSource)
+    setActiveTab('overview')
+    loadResults({ source: nextSource, preferredMode: 'local' })
+  }
+
+  const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'
 
   const filteredVulns = findings.filter(v =>
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.category.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const selectedVuln = useMemo(() => {
+    if (!findings.length) return null
+    return findings.find(vuln => vuln.id === selectedVulnId) || findings[0]
+  }, [findings, selectedVulnId])
 
   const overviewStats = useMemo(() => {
     const critical = findings.filter(vuln => vuln.severity === 'Critical').length
@@ -497,6 +512,100 @@ const Dashboard = ({ repoUrl }) => {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          <div className="mb-6 grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
+            <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-5 shadow-[0_0_40px_rgba(15,23,42,0.2)]">
+              <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-400 mb-2">Scan launcher</div>
+                  <h2 className="text-lg font-bold text-white">Run a remote repo scan or a local folder scan</h2>
+                  <p className="text-sm text-gray-500 mt-1">Remote inputs use <span className="text-gray-300">/scan</span>. Local folder paths use <span className="text-gray-300">/scan-local</span>.</p>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3 min-w-[170px]">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-1">Total findings</div>
+                  <div className="text-3xl font-black text-white">{overviewStats.total}</div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <form onSubmit={handleRemoteSubmit} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Remote scan</div>
+                      <div className="text-sm text-gray-300 mt-1">Submit a repository URL</div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">POST /scan</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={remoteRepoUrl}
+                      onChange={e => setRemoteRepoUrl(e.target.value)}
+                      placeholder="https://github.com/org/repo"
+                      className="flex-1 bg-black/20 border border-white/8 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500/50 placeholder:text-gray-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!remoteRepoUrl.trim() || isRefreshing}
+                      className="px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading && scanEndpoint === '/scan' ? 'Scanning...' : 'Scan'}
+                    </button>
+                  </div>
+                </form>
+
+                <form onSubmit={handleLocalSubmit} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">Local test</div>
+                      <div className="text-sm text-gray-300 mt-1">Submit a local folder path</div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">POST /scan-local</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={localFolderPath}
+                      onChange={e => setLocalFolderPath(e.target.value)}
+                      placeholder="C:\\Users\\appus\\Projects\\bobguard"
+                      className="flex-1 bg-black/20 border border-white/8 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!localFolderPath.trim() || isRefreshing}
+                      className="px-4 py-3 rounded-xl bg-cyan-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading && scanEndpoint === '/scan-local' ? 'Scanning...' : 'Test'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-5">
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-500 mb-4">Scan summary</div>
+              <div className="space-y-3">
+                {[
+                  { label: 'Active source', value: scanSource || 'None selected' },
+                  { label: 'Endpoint', value: scanEndpoint || 'Not started' },
+                  { label: 'Severity groups', value: String(new Set(findings.map(item => item.severity)).size) },
+                  { label: 'OWASP mappings', value: String(new Set(findings.map(item => item.category)).size) },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
+                    <span className="text-xs text-gray-500 uppercase tracking-[0.2em]">{item.label}</span>
+                    <span className="text-sm font-semibold text-white truncate max-w-[180px] text-right">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {loadError && findings.length > 0 && (
+            <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-100 flex items-center justify-between gap-4">
+              <span>Last scan returned an error while refreshing results: {loadError}</span>
+              <button onClick={handleRefresh} className="px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-xs font-bold uppercase tracking-widest shrink-0">Retry</button>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
 
             {/* ── Overview ── */}
@@ -548,7 +657,7 @@ const Dashboard = ({ repoUrl }) => {
                             key={vuln.id}
                             variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
                             whileHover={{ scale: 1.01, x: 2 }}
-                            onClick={() => setSelectedVuln(vuln)}
+                            onClick={() => setSelectedVulnId(vuln.id)}
                             className={`p-5 rounded-2xl border cursor-pointer group transition-all ${
                               selectedVuln?.id === vuln.id
                                 ? 'bg-blue-600/8 border-blue-500/40 ring-1 ring-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.08)]'
@@ -648,7 +757,7 @@ const Dashboard = ({ repoUrl }) => {
                         <button onClick={handleRefresh} className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-xs font-bold uppercase tracking-widest">Retry</button>
                       </div>
                     ) : (
-                      <Vulnerabilities vulnerabilities={filteredVulns} onSelect={setSelectedVuln} selectedId={selectedVuln?.id} />
+                      <Vulnerabilities vulnerabilities={filteredVulns} onSelect={vuln => setSelectedVulnId(vuln.id)} selectedId={selectedVuln?.id} />
                     )}
                   </div>
                   <div className="w-[460px] shrink-0">

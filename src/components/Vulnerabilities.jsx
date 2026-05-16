@@ -1,5 +1,8 @@
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { ChevronRight, Terminal, ShieldCheck, AlertTriangle } from 'lucide-react'
+
+const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Info']
 
 const SeverityBadge = ({ severity }) => {
   const label = String(severity || '').trim() || 'Medium'
@@ -7,7 +10,8 @@ const SeverityBadge = ({ severity }) => {
     'Critical': 'bg-red-500 text-white',
     'High': 'bg-orange-500 text-white',
     'Medium': 'bg-yellow-500 text-black',
-    'Low': 'bg-blue-500 text-white'
+    'Low': 'bg-blue-500 text-white',
+    'Info': 'bg-purple-500 text-white'
   }
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${colors[severity] || 'bg-gray-500'}`}>
@@ -17,6 +21,19 @@ const SeverityBadge = ({ severity }) => {
 }
 
 const Vulnerabilities = ({ vulnerabilities, onSelect, selectedId }) => {
+  const groupedVulnerabilities = useMemo(() => {
+    const buckets = vulnerabilities.reduce((accumulator, vuln) => {
+      const severity = vuln.severity || 'Medium'
+      if (!accumulator[severity]) accumulator[severity] = []
+      accumulator[severity].push(vuln)
+      return accumulator
+    }, {})
+
+    return SEVERITY_ORDER
+      .filter(severity => buckets[severity]?.length)
+      .map(severity => ({ severity, items: buckets[severity] }))
+  }, [vulnerabilities])
+
   const containerVariants = {
     hidden: { opacity: 0 },
     show: {
@@ -53,71 +70,98 @@ const Vulnerabilities = ({ vulnerabilities, onSelect, selectedId }) => {
         </div>
       </div>
 
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="show"
-        className="grid grid-cols-1 gap-4"
-      >
-        {vulnerabilities.map((vuln) => (
-          <motion.div 
-            key={vuln.id}
-            variants={itemVariants}
-            onClick={() => onSelect(vuln)}
-            whileHover={{ scale: 1.01, backgroundColor: 'rgba(255, 255, 255, 0.04)' }}
-            className={`p-6 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${
-              selectedId === vuln.id 
-              ? 'bg-blue-600/10 border-blue-500/50 ring-1 ring-blue-500/50 shadow-[0_0_30px_rgba(37,99,235,0.1)]' 
-              : 'bg-white/2 border-white/5 hover:border-white/10'
-            }`}
-          >
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-3">
-                <SeverityBadge severity={vuln.severity} />
-                <h4 className="font-bold text-lg text-white group-hover:text-blue-400 transition-colors">
-                  {vuln.title}
-                </h4>
-              </div>
-              
-              <div className="flex items-center gap-6 text-sm text-gray-500 font-mono">
-                <div className="flex items-center gap-2">
-                  <Terminal size={14} className="text-blue-500/60" />
-                  <span>{vuln.file}{vuln.line !== null && vuln.line !== undefined ? <><span className="text-gray-700">:</span> {vuln.line}</> : null}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck size={14} className="text-cyan-500/60" />
-                  <span>{vuln.category}</span>
-                </div>
-              </div>
-              <p className="mt-3 text-sm text-gray-300/75 leading-relaxed">
-                {vuln.description}
-              </p>
-              {vuln.suggestion && (
-                <p className="mt-2 text-xs text-blue-300/80 leading-relaxed">
-                  Suggestion: {vuln.suggestion}
-                </p>
-              )}
-            </div>
+      <div className="mb-4 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 flex items-center justify-between text-sm text-gray-400">
+        <span>Total findings</span>
+        <span className="font-semibold text-white">{vulnerabilities.length}</span>
+      </div>
 
-            <div className="flex items-center gap-4">
-               {vuln.severity === 'Critical' && (
-                 <motion.div
-                   animate={{ opacity: [0.4, 1, 0.4] }}
-                   transition={{ duration: 2, repeat: Infinity }}
-                 >
-                   <AlertTriangle size={18} className="text-red-500" />
-                 </motion.div>
-               )}
-               <ChevronRight 
-                 size={20} 
-                 className={`text-gray-600 group-hover:text-blue-400 transition-all ${
-                   selectedId === vuln.id ? 'rotate-90 translate-x-1' : ''
-                 }`} 
-               />
+      {groupedVulnerabilities.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.02] p-8 text-center text-gray-500">
+          <ShieldCheck size={32} className="mx-auto mb-3 opacity-60" />
+          <h3 className="text-base font-bold text-gray-300 mb-2">No findings returned</h3>
+          <p className="text-sm max-w-md mx-auto leading-relaxed">Run a repo URL scan or a local folder scan to see issues grouped by severity.</p>
+        </div>
+      ) : (
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="space-y-6"
+        >
+          {groupedVulnerabilities.map(group => (
+            <div key={group.severity} className="space-y-3">
+              <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <SeverityBadge severity={group.severity} />
+                  <span className="text-sm font-semibold text-white">{group.severity} findings</span>
+                </div>
+                <span className="text-xs text-gray-500">{group.items.length} item{group.items.length === 1 ? '' : 's'}</span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {group.items.map((vuln) => (
+                  <motion.div 
+                    key={vuln.id}
+                    variants={itemVariants}
+                    onClick={() => onSelect(vuln)}
+                    whileHover={{ scale: 1.01, backgroundColor: 'rgba(255, 255, 255, 0.04)' }}
+                    className={`p-6 rounded-2xl border transition-all cursor-pointer group flex items-center justify-between ${
+                      selectedId === vuln.id 
+                      ? 'bg-blue-600/10 border-blue-500/50 ring-1 ring-blue-500/50 shadow-[0_0_30px_rgba(37,99,235,0.1)]' 
+                      : 'bg-white/2 border-white/5 hover:border-white/10'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3">
+                        <SeverityBadge severity={vuln.severity} />
+                        <h4 className="font-bold text-lg text-white group-hover:text-blue-400 transition-colors">
+                          {vuln.title}
+                        </h4>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500 font-mono">
+                        <div className="flex items-center gap-2">
+                          <Terminal size={14} className="text-blue-500/60" />
+                          <span>{vuln.file}{vuln.line !== null && vuln.line !== undefined ? <><span className="text-gray-700">:</span> {vuln.line}</> : null}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck size={14} className="text-cyan-500/60" />
+                          <span>{vuln.category}</span>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm text-gray-300/75 leading-relaxed">
+                        {vuln.description}
+                      </p>
+                      {vuln.suggestion && (
+                        <p className="mt-2 text-xs text-blue-300/80 leading-relaxed">
+                          Suggestion: {vuln.suggestion}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                       {vuln.severity === 'Critical' && (
+                         <motion.div
+                           animate={{ opacity: [0.4, 1, 0.4] }}
+                           transition={{ duration: 2, repeat: Infinity }}
+                         >
+                           <AlertTriangle size={18} className="text-red-500" />
+                         </motion.div>
+                       )}
+                       <ChevronRight 
+                         size={20} 
+                         className={`text-gray-600 group-hover:text-blue-400 transition-all ${
+                           selectedId === vuln.id ? 'rotate-90 translate-x-1' : ''
+                         }`} 
+                       />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
             </div>
-          </motion.div>
-        ))}
-      </motion.div>
+          ))}
+        </motion.div>
+      )}
     </div>
   )
 }
