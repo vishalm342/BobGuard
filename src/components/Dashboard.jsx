@@ -143,11 +143,10 @@ const NavItem = ({ icon, label, active = false, onClick, badge }) => (
     onClick={onClick}
     whileHover={{ scale: 1.04, backgroundColor: 'rgba(37, 99, 235, 0.12)', boxShadow: '0 0 20px rgba(37, 99, 235, 0.08)' }}
     whileTap={{ scale: 0.97 }}
-    className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all border ${
-      active
+    className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all border ${active
         ? 'bg-blue-600 text-white glow-blue border-blue-400/40'
         : 'text-gray-400 border-transparent hover:text-white'
-    }`}
+      }`}
   >
     <div className={active ? 'text-white' : 'text-gray-500'}>{icon}</div>
     <span className="font-semibold text-sm flex-1">{label}</span>
@@ -370,41 +369,60 @@ const Dashboard = ({ repoUrl }) => {
                       <h3 className="text-lg font-bold">Identified Vulnerabilities</h3>
                       <span className="text-xs text-gray-500">{filteredVulns.length} found</span>
                     </div>
-                    <motion.div
-                      variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } }}
-                      initial="hidden"
-                      animate="show"
-                      className="space-y-3"
-                    >
-                      {filteredVulns.map(vuln => (
+                    {filteredVulns.length === 0 ? (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="flex flex-col items-center justify-center text-center p-12 rounded-3xl border border-dashed border-green-500/30 bg-green-500/5 mt-4"
+                      >
                         <motion.div
-                          key={vuln.id}
-                          variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
-                          whileHover={{ scale: 1.01, x: 2 }}
-                          onClick={() => setSelectedVuln(vuln)}
-                          className={`p-5 rounded-2xl border cursor-pointer group transition-all ${
-                            selectedVuln?.id === vuln.id
-                              ? 'bg-blue-600/8 border-blue-500/40 ring-1 ring-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.08)]'
-                              : 'bg-white/2 border-white/5 hover:border-white/10 hover:bg-white/4'
-                          }`}
+                          animate={{ scale: [1, 1.1, 1] }}
+                          transition={{ repeat: Infinity, duration: 2 }}
+                          className="mb-6 p-4 rounded-full bg-green-500/10 shadow-[0_0_20px_rgba(34,197,94,0.15)]"
                         >
-                          <div className="flex items-center justify-between mb-2.5">
-                            <div className="flex items-center gap-2.5">
-                              <SeverityBadge severity={vuln.severity} />
-                              <h4 className="font-semibold text-sm text-white group-hover:text-blue-300 transition-colors">{vuln.title}</h4>
-                            </div>
-                            <ChevronRight
-                              size={16}
-                              className={`text-gray-600 group-hover:text-gray-400 transition-all ${selectedVuln?.id === vuln.id ? 'rotate-90 text-blue-400' : ''}`}
-                            />
-                          </div>
-                          <div className="flex items-center gap-5 text-xs text-gray-600 font-mono">
-                            <span className="flex items-center gap-1.5"><Terminal size={12} /> {vuln.file}:{vuln.line}</span>
-                            <span className="flex items-center gap-1.5"><ShieldCheck size={12} /> {vuln.category}</span>
-                          </div>
+                          <ShieldCheck size={48} className="text-green-400" />
                         </motion.div>
-                      ))}
-                    </motion.div>
+                        <h3 className="text-xl font-bold mb-2 text-green-400">No vulnerabilities detected!</h3>
+                        <p className="text-sm text-gray-400 leading-relaxed max-w-[280px]">
+                          Your repository is secure. We couldn't find any critical or high-severity issues. Keep up the great work!
+                        </p>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } }}
+                        initial="hidden"
+                        animate="show"
+                        className="space-y-3"
+                      >
+                        {filteredVulns.map(vuln => (
+                          <motion.div
+                            key={vuln.id}
+                            variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
+                            whileHover={{ scale: 1.01, x: 2 }}
+                            onClick={() => setSelectedVuln(vuln)}
+                            className={`p-5 rounded-2xl border cursor-pointer group transition-all ${selectedVuln?.id === vuln.id
+                                ? 'bg-blue-600/8 border-blue-500/40 ring-1 ring-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.08)]'
+                                : 'bg-white/2 border-white/5 hover:border-white/10 hover:bg-white/4'
+                              }`}
+                          >
+                            <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center gap-2.5">
+                                <SeverityBadge severity={vuln.severity} />
+                                <h4 className="font-semibold text-sm text-white group-hover:text-blue-300 transition-colors">{vuln.title}</h4>
+                              </div>
+                              <ChevronRight
+                                size={16}
+                                className={`text-gray-600 group-hover:text-gray-400 transition-all ${selectedVuln?.id === vuln.id ? 'rotate-90 text-blue-400' : ''}`}
+                              />
+                            </div>
+                            <div className="flex items-center gap-5 text-xs text-gray-600 font-mono">
+                              <span className="flex items-center gap-1.5"><Terminal size={12} /> {vuln.file}:{vuln.line}</span>
+                              <span className="flex items-center gap-1.5"><ShieldCheck size={12} /> {vuln.category}</span>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    )}
                   </div>
 
                   {/* Detail Panel */}

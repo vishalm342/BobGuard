@@ -1,6 +1,6 @@
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, Eye, EyeOff, Mail, User, Lock,
@@ -28,7 +28,10 @@ const AnimatedBackground = () => (
   </div>
 )
 
-/* ─── Floating Particles ──────────────────────────────────────────────────── */
+/* const SignUp = () => {
+  const navigate = useNavigate(); // <--- Add this line
+  
+  // Keep all your other state and animation logic here...const SignUp = () => {
 const FloatingParticles = () => {
   const particles = Array.from({ length: 20 }, (_, i) => ({
     id: i,
@@ -286,7 +289,7 @@ const SignUp = ({ onSignUp }) => {
                 <h2 className="text-[26px] font-black text-white mb-1.5 tracking-tight">Create your account</h2>
                 <p className="text-sm text-gray-500">
                   Already have one?{' '}
-                  <Link to="/signin" className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">Sign in</Link>
+                  <button className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">Sign in</button>
                 </p>
               </div>
 
@@ -394,3 +397,22 @@ const SignUp = ({ onSignUp }) => {
 }
 
 export default SignUp
+import { useNavigate } from 'react-router-dom';
+
+// ... inside your SignUp component function:
+const navigate = useNavigate();
+
+const handleSignUp = () => {
+  // This line tells the browser to go to the dashboard page
+  navigate('/dashboard');
+};
+
+// ... then find your button and add the click handler:
+<button onClick={handleSignUp} className="...">
+  Create Account
+  <button
+    onClick={() => navigate('/dashboard')}
+    className="your-existing-tailwind-classes"
+  >
+    Create Account
+  </button>
