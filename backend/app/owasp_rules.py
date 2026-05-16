@@ -1,74 +1,105 @@
-RULES = [
+"""MVP OWASP rule definitions for BobGuard."""
+
+from __future__ import annotations
+
+from .fix_templates import get_fix_template
+
+OWASP_RULES = [
     {
-        "name": "Hardcoded Secret",
-        "issue_type": "hardcoded_secret",
-        "pattern": r"(api[_-]?key|secret|token|password)\s*[:=]\s*[\"'][^\"'\n]{4,}[\"']",
-        "severity": "High",
-        "owasp_category": "A02:2021 - Cryptographic Failures",
-        "description": "Possible hardcoded secret found in source code."
-    },
-    {
-        "name": "Bearer Token Pattern",
-        "issue_type": "hardcoded_secret",
-        "pattern": r"Bearer\s+[A-Za-z0-9\-\._~\+\/]+=*",
-        "severity": "High",
-        "owasp_category": "A02:2021 - Cryptographic Failures",
-        "description": "Possible bearer token exposed in code or config."
-    },
-    {
-        "name": "SQL Injection Risk",
-        "issue_type": "sql_injection_risk",
-        "pattern": r"(SELECT|INSERT|UPDATE|DELETE).*(\+|%s|format\(|f\")",
-        "severity": "High",
+        "rule_id": "A03",
+        "title": "Injection",
         "owasp_category": "A03:2021 - Injection",
-        "description": "Possible SQL query built unsafely using interpolation or concatenation."
+        "severity": "critical",
+        "description": (
+            "Detects unsafely concatenated SQL, shell, or template input that can be controlled "
+            "by an attacker."
+        ),
+        "pattern_hints": [
+            r"execute\(.*\+",
+            r"SELECT\s+.*['\"].*\+",
+            r"(os\.system|subprocess\..*)\(.*\+",
+        ],
+        "suggested_fix_template": get_fix_template("A03"),
     },
     {
-        "name": "Debug Enabled",
-        "issue_type": "debug_enabled",
-        "pattern": r"debug\s*=\s*True|FLASK_DEBUG\s*=\s*1|DEBUG\s*=\s*True",
-        "severity": "Medium",
+        "rule_id": "A02",
+        "title": "Cryptographic Failures",
+        "owasp_category": "A02:2021 - Cryptographic Failures",
+        "severity": "high",
+        "description": (
+            "Flags weak hashes, hardcoded secrets, insecure ciphers, and missing encryption for "
+            "sensitive data."
+        ),
+        "pattern_hints": [
+            r"\bmd5\(",
+            r"\bsha1\(",
+            r"(api|secret|token).{0,20}[=:].{0,20}['\"].+['\"]",
+        ],
+        "suggested_fix_template": get_fix_template("A02"),
+    },
+    {
+        "rule_id": "A05",
+        "title": "Security Misconfiguration",
         "owasp_category": "A05:2021 - Security Misconfiguration",
-        "description": "Debug mode appears to be enabled."
+        "severity": "medium",
+        "description": (
+            "Finds debug mode, permissive CORS, default credentials, verbose error output, and "
+            "overly broad server settings."
+        ),
+        "pattern_hints": [
+            r"debug\s*=\s*True",
+            r"allow_origins\s*=\s*\[\s*['\"]\*['\"]\s*\]",
+            r"default(password|credential|admin)",
+        ],
+        "suggested_fix_template": get_fix_template("A05"),
     },
     {
-        "name": "Weak CORS",
-        "issue_type": "weak_cors",
-        "pattern": r"allow_origins\s*=\s*\[\s*[\"']\*[\"']\s*\]|Access-Control-Allow-Origin[\"']?\s*[:=]\s*[\"']\*[\"']",
-        "severity": "Medium",
-        "owasp_category": "A05:2021 - Security Misconfiguration",
-        "description": "Wildcard CORS configuration detected."
+        "rule_id": "A01",
+        "title": "Broken Access Control",
+        "owasp_category": "A01:2021 - Broken Access Control",
+        "severity": "high",
+        "description": (
+            "Detects missing authorization checks, direct object access without ownership validation, "
+            "and admin-only actions exposed to any user."
+        ),
+        "pattern_hints": [
+            r"if\s+user\.(is_admin|role\s*==\s*['\"]admin['\"])",
+            r"get\(request\.(args|json|form)\[.*\]\)",
+            r"(delete|update|approve|export)_.*\(.*user_id",
+        ],
+        "suggested_fix_template": get_fix_template("A01"),
     },
     {
-        "name": "Weak Crypto",
-        "issue_type": "weak_crypto",
-        "pattern": r"\b(md5|sha1)\s*\(",
-        "severity": "Medium",
-        "owasp_category": "A02:2021 - Cryptographic Failures",
-        "description": "Weak cryptographic primitive detected."
+        "rule_id": "A09",
+        "title": "Security Logging & Monitoring Failures",
+        "owasp_category": "A09:2021 - Security Logging & Monitoring Failures",
+        "severity": "medium",
+        "description": (
+            "Flags missing audit events, swallowed exceptions, and sensitive actions that do not "
+            "leave an alertable trail."
+        ),
+        "pattern_hints": [
+            r"except\s+Exception\s*:\s*pass",
+            r"logger\.(debug|info)\(.*(auth|login|permission)",
+            r"print\(.*(error|failed|denied)",
+        ],
+        "suggested_fix_template": get_fix_template("A09"),
     },
-    {
-        "name": "Dangerous Eval",
-        "issue_type": "dangerous_eval",
-        "pattern": r"\b(eval|exec)\s*\(",
-        "severity": "High",
-        "owasp_category": "A03:2021 - Injection",
-        "description": "Dangerous dynamic code execution detected."
-    },
-    {
-        "name": "Subprocess shell=True",
-        "issue_type": "subprocess_shell_true",
-        "pattern": r"subprocess\.(run|Popen|call)\(.*shell\s*=\s*True",
-        "severity": "High",
-        "owasp_category": "A03:2021 - Injection",
-        "description": "subprocess with shell=True can be dangerous."
-    },
-    {
-        "name": "Pickle Load Risk",
-        "issue_type": "pickle_load_risk",
-        "pattern": r"pickle\.load\s*\(",
-        "severity": "High",
-        "owasp_category": "A08:2021 - Software and Data Integrity Failures",
-        "description": "Untrusted pickle deserialization can lead to code execution."
-    }
 ]
+
+RULE_INDEX = {rule["rule_id"]: rule for rule in OWASP_RULES}
+
+
+def list_rules():
+    """Return all MVP OWASP rules in a stable order."""
+
+    return list(OWASP_RULES)
+
+
+def get_rule(rule_id: str):
+    """Return a single rule by ID, or None when it does not exist."""
+
+    return RULE_INDEX.get(rule_id)
+
+
+__all__ = ["OWASP_RULES", "RULE_INDEX", "get_rule", "list_rules"]

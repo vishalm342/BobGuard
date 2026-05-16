@@ -2,8 +2,7 @@ import re
 from pathlib import Path
 from typing import List
 
-from app.owasp_rules import RULES
-from app.fix_templates import get_fix_suggestion
+from app.owasp_rules import OWASP_RULES
 from app.schemas import Finding
 
 
@@ -28,19 +27,21 @@ def scan_file(file_path: Path, repo_root: Path) -> List[Finding]:
     lines = content.splitlines()
 
     for idx, line in enumerate(lines, start=1):
-        for rule in RULES:
-            if re.search(rule["pattern"], line, re.IGNORECASE):
-                findings.append(
-                    Finding(
-                        file_path=str(file_path.relative_to(repo_root)),
-                        line_number=idx,
-                        issue_type=rule["issue_type"],
-                        severity=rule["severity"],
-                        owasp_category=rule["owasp_category"],
-                        description=rule["description"],
-                        suggestion=get_fix_suggestion(rule["issue_type"])
+        for rule in OWASP_RULES:
+            for pattern in rule["pattern_hints"]:
+                if re.search(pattern, line, re.IGNORECASE):
+                    findings.append(
+                        Finding(
+                            file_path=str(file_path.relative_to(repo_root)),
+                            line_number=idx,
+                            issue_type=rule["rule_id"],
+                            severity=rule["severity"],
+                            owasp_category=rule["owasp_category"],
+                            description=rule["description"],
+                            suggestion=rule["suggested_fix_template"]
+                        )
                     )
-                )
+                    break  # only one finding per rule per line
 
     return findings
 
