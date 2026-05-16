@@ -1,0 +1,79 @@
+{
+  "rules": [
+    {
+      "rule_id": "A03",
+      "examples": [
+        {
+          "id": "A03-1",
+          "expected_match": true,
+          "sample": "cursor.execute(\"SELECT * FROM users WHERE email = '\" + email + \"'\")"
+        },
+        {
+          "id": "A03-2",
+          "expected_match": false,
+          "sample": "cursor.execute(\"SELECT * FROM users WHERE email = ?\", (email,))"
+        }
+      ]
+    },
+    {
+      "rule_id": "A02",
+      "examples": [
+        {
+          "id": "A02-1",
+          "expected_match": true,
+          "sample": "password_hash = hashlib.md5(password.encode()).hexdigest()"
+        },
+        {
+          "id": "A02-2",
+          "expected_match": false,
+          "sample": "password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt())"
+        }
+      ]
+    },
+    {
+      "rule_id": "A05",
+      "examples": [
+        {
+          "id": "A05-1",
+          "expected_match": true,
+          "sample": "app = FastAPI(debug=True)"
+        },
+        {
+          "id": "A05-2",
+          "expected_match": false,
+          "sample": "app = FastAPI(debug=False)"
+        }
+      ]
+    },
+    {
+      "rule_id": "A01",
+      "examples": [
+        {
+          "id": "A01-1",
+          "expected_match": true,
+          "sample": "invoice = invoices.get(request.path_params['invoice_id'])"
+        },
+        {
+          "id": "A01-2",
+          "expected_match": false,
+          "sample": "invoice = invoices.get_for_user(current_user.id, request.path_params['invoice_id'])"
+        }
+      ]
+    },
+    {
+      "rule_id": "A09",
+      "examples": [
+        {
+          "id": "A09-1",
+          "expected_match": true,
+          "sample": "except Exception:\n    pass"
+        },
+        {
+          "id": "A09-2",
+          "expected_match": false,
+          "sample": "logger.warning(\"login_failed\", extra={\"user\": username})"
+        }
+      ]
+    }
+  ]
+}
