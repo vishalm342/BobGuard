@@ -1,0 +1,224 @@
+﻿
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\App.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\BookingModal.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\CodebaseView.jsx
+  1:8   error  'React' is defined but never used  no-unused-vars
+  2:18  error  'File' is defined but never used   no-unused-vars
+  2:80  error  'Cpu' is defined but never used    no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Connect.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Dashboard.jsx
+   1:8  error  'React' is defined but never used           no-unused-vars
+   8:3  error  'ExternalLink' is defined but never used    no-unused-vars
+  12:3  error  'GitPullRequest' is defined but never used  no-unused-vars
+  17:3  error  'Zap' is defined but never used             no-unused-vars
+  18:3  error  'Lock' is defined but never used            no-unused-vars
+  19:3  error  'Eye' is defined but never used             no-unused-vars
+  21:3  error  'Settings' is defined but never used        no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Hero.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\MenuHighlight.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Navbar.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Notifications.jsx
+  1:8   error  'React' is defined but never used          no-unused-vars
+  4:39  error  'AlertTriangle' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Reports.jsx
+  1:8   error  'React' is defined but never used         no-unused-vars
+  3:65  error  'Terminal' is defined but never used      no-unused-vars
+  3:91  error  'ChevronRight' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Scanner.jsx
+  1:8   error  'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              no-unused-vars
+  3:46  error  'Lock' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               no-unused-vars
+  7:14  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+   5 | const FallingCodeStream = () => {
+   6 |   const columns = useMemo(() => Array.from({ length: 20 }, () => ({
+>  7 |     left: `${Math.random() * 100}%`,
+     |              ^^^^^^^^^^^^^ Cannot call impure function
+   8 |     duration: 5 + Math.random() * 10,
+   9 |     delay: Math.random() * 5,
+  10 |     chars: Array.from({ length: 15 }, () =>                                                                                           react-hooks/purity
+  8:19  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+   6 |   const columns = useMemo(() => Array.from({ length: 20 }, () => ({
+   7 |     left: `${Math.random() * 100}%`,
+>  8 |     duration: 5 + Math.random() * 10,
+     |                   ^^^^^^^^^^^^^ Cannot call impure function
+   9 |     delay: Math.random() * 5,
+  10 |     chars: Array.from({ length: 15 }, () => 
+  11 |       Math.random() > 0.5 ? Math.floor(Math.random() * 2) : String.fromCharCode(65 + Math.floor(Math.random() * 26))  react-hooks/purity
+  9:12  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+   7 |     left: `${Math.random() * 100}%`,
+   8 |     duration: 5 + Math.random() * 10,
+>  9 |     delay: Math.random() * 5,
+     |            ^^^^^^^^^^^^^ Cannot call impure function
+  10 |     chars: Array.from({ length: 15 }, () => 
+  11 |       Math.random() > 0.5 ? Math.floor(Math.random() * 2) : String.fromCharCode(65 + Math.floor(Math.random() * 26))
+  12 |     )                                                                       react-hooks/purity
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\SeatingArea.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\SignIn.jsx
+   1:8   error  'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         no-unused-vars
+   6:39  error  'Activity' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      no-unused-vars
+  34:8   error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  32 |   const particles = Array.from({ length: 20 }, (_, i) => ({
+  33 |     id: i,
+> 34 |     x: Math.random() * 100,
+     |        ^^^^^^^^^^^^^ Cannot call impure function
+  35 |     y: Math.random() * 100,
+  36 |     size: Math.random() * 3 + 1,
+  37 |     duration: Math.random() * 8 + 6,  react-hooks/purity
+  35:8   error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  33 |     id: i,
+  34 |     x: Math.random() * 100,
+> 35 |     y: Math.random() * 100,
+     |        ^^^^^^^^^^^^^ Cannot call impure function
+  36 |     size: Math.random() * 3 + 1,
+  37 |     duration: Math.random() * 8 + 6,
+  38 |     delay: Math.random() * 4,                                react-hooks/purity
+  36:11  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  34 |     x: Math.random() * 100,
+  35 |     y: Math.random() * 100,
+> 36 |     size: Math.random() * 3 + 1,
+     |           ^^^^^^^^^^^^^ Cannot call impure function
+  37 |     duration: Math.random() * 8 + 6,
+  38 |     delay: Math.random() * 4,
+  39 |   }))                                  react-hooks/purity
+  37:15  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  35 |     y: Math.random() * 100,
+  36 |     size: Math.random() * 3 + 1,
+> 37 |     duration: Math.random() * 8 + 6,
+     |               ^^^^^^^^^^^^^ Cannot call impure function
+  38 |     delay: Math.random() * 4,
+  39 |   }))
+  40 |   return (                                               react-hooks/purity
+  38:12  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  36 |     size: Math.random() * 3 + 1,
+  37 |     duration: Math.random() * 8 + 6,
+> 38 |     delay: Math.random() * 4,
+     |            ^^^^^^^^^^^^^ Cannot call impure function
+  39 |   }))
+  40 |   return (
+  41 |     <div className="absolute inset-0 overflow-hidden pointer-events-none">   react-hooks/purity
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\SignUp.jsx
+   1:10  error  'useNavigate' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   no-unused-vars
+   2:8   error  'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         no-unused-vars
+  35:8   error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  33 |   const particles = Array.from({ length: 20 }, (_, i) => ({
+  34 |     id: i,
+> 35 |     x: Math.random() * 100,
+     |        ^^^^^^^^^^^^^ Cannot call impure function
+  36 |     y: Math.random() * 100,
+  37 |     size: Math.random() * 3 + 1,
+  38 |     duration: Math.random() * 8 + 6,  react-hooks/purity
+  36:8   error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  34 |     id: i,
+  35 |     x: Math.random() * 100,
+> 36 |     y: Math.random() * 100,
+     |        ^^^^^^^^^^^^^ Cannot call impure function
+  37 |     size: Math.random() * 3 + 1,
+  38 |     duration: Math.random() * 8 + 6,
+  39 |     delay: Math.random() * 4,                                react-hooks/purity
+  37:11  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  35 |     x: Math.random() * 100,
+  36 |     y: Math.random() * 100,
+> 37 |     size: Math.random() * 3 + 1,
+     |           ^^^^^^^^^^^^^ Cannot call impure function
+  38 |     duration: Math.random() * 8 + 6,
+  39 |     delay: Math.random() * 4,
+  40 |   }))                                  react-hooks/purity
+  38:15  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  36 |     y: Math.random() * 100,
+  37 |     size: Math.random() * 3 + 1,
+> 38 |     duration: Math.random() * 8 + 6,
+     |               ^^^^^^^^^^^^^ Cannot call impure function
+  39 |     delay: Math.random() * 4,
+  40 |   }))
+  41 |   return (                                               react-hooks/purity
+  39:12  error  Error: Cannot call impure function during render
+
+`Math.random` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  37 |     size: Math.random() * 3 + 1,
+  38 |     duration: Math.random() * 8 + 6,
+> 39 |     delay: Math.random() * 4,
+     |            ^^^^^^^^^^^^^ Cannot call impure function
+  40 |   }))
+  41 |   return (
+  42 |     <div className="absolute inset-0 overflow-hidden pointer-events-none">   react-hooks/purity
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\Vulnerabilities.jsx
+  1:8  error  'React' is defined but never used  no-unused-vars
+
+C:\Users\ADMIN\OneDrive\Desktop\Frontend\src\components\VulnerabilityDetail.jsx
+   1:8   error  'React' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+   3:10  error  'ShieldAlert' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       no-unused-vars
+  11:5   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+   9 |   // Reset state if a new vulnerability is selected
+  10 |   useEffect(() => {
+> 11 |     setPrState('idle')
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  12 |   }, [vulnerability])
+  13 |
+  14 |   if (!vulnerability) return null  react-hooks/set-state-in-effect
+
+✖ 45 problems (45 errors, 0 warnings)
+
