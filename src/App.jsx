@@ -23,8 +23,9 @@ function AnimatedRoutes() {
   const handleConnect = (url) => {
     setRepoUrl(url);
     navigate('/scanning');
-    setTimeout(() => navigate('/dashboard'), 4500);
   };
+
+  const handleScanComplete = () => navigate('/dashboard');
 
   return (
     <AnimatePresence mode="wait">
@@ -55,7 +56,7 @@ function AnimatedRoutes() {
 
         <Route path="/scanning" element={
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-            <Scanner repoUrl={repoUrl} />
+            <Scanner repoUrl={repoUrl} onComplete={handleScanComplete} />
           </motion.div>
         } />
 

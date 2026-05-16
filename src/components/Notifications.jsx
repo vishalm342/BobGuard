@@ -1,123 +1,10 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Bell, BellOff, CheckCircle, AlertTriangle,
   ShieldAlert, Info, Clock, Filter, X, ChevronDown,
   Shield, Database, Bug, ServerCrash, RefreshCw
 } from 'lucide-react'
-
-// ── Notification Data ────────────────────────────────────────────────────────
-
-const NOTIFICATIONS = [
-  {
-    id: 1,
-    title: 'SQL Injection Detected in Authentication Module',
-    description: 'A critical SQL injection vulnerability was found in src/auth/login.js at line 45. User input is directly concatenated into the SQL query string, allowing potential data extraction or authentication bypass.',
-    priority: 'Critical',
-    category: 'SQL Injection',
-    owasp: 'A03:2021-Injection',
-    file: 'src/auth/login.js:45',
-    timestamp: '2 minutes ago',
-    read: false,
-    icon: <ShieldAlert size={18} />,
-  },
-  {
-    id: 2,
-    title: 'Broken Access Control on Profile Update Endpoint',
-    description: 'The /api/user/profile endpoint does not verify if the requesting user has permission to modify the target profile ID. Any authenticated user can modify other users\' profiles.',
-    priority: 'High',
-    category: 'Broken Access Control',
-    owasp: 'A01:2021-Broken Access Control',
-    file: 'src/api/user.py:112',
-    timestamp: '18 minutes ago',
-    read: false,
-    icon: <Shield size={18} />,
-  },
-  {
-    id: 3,
-    title: 'Privilege Escalation via Role Parameter Tampering',
-    description: 'The user registration API accepts a "role" field in the request body without validation. An attacker can set their role to "admin" during sign-up.',
-    priority: 'Critical',
-    category: 'Broken Access Control',
-    owasp: 'A01:2021-Broken Access Control',
-    file: 'src/api/register.js:28',
-    timestamp: '34 minutes ago',
-    read: false,
-    icon: <ShieldAlert size={18} />,
-  },
-  {
-    id: 4,
-    title: 'System Scan Completed Successfully',
-    description: 'Full codebase security scan finished. 1,284 files analyzed across 47 directories. 4 vulnerabilities detected, 2 critical, 1 high, 1 medium.',
-    priority: 'System',
-    category: 'System Updates',
-    owasp: null,
-    file: null,
-    timestamp: '1 hour ago',
-    read: true,
-    icon: <CheckCircle size={18} />,
-  },
-  {
-    id: 5,
-    title: 'Sensitive Data Exposure in Application Logs',
-    description: 'Application secrets and API keys are being logged in plain text during initialization in the logger configuration module.',
-    priority: 'High',
-    category: 'Cryptographic Failures',
-    owasp: 'A02:2021-Cryptographic Failures',
-    file: 'src/config/logger.ts:22',
-    timestamp: '2 hours ago',
-    read: false,
-    icon: <Database size={18} />,
-  },
-  {
-    id: 6,
-    title: 'Outdated Dependency with Known SSRF Vulnerability',
-    description: 'The version of "axios" (0.21.1) being used has a known SSRF vulnerability (CVE-2023-45857). Update to version 1.6.0 or higher.',
-    priority: 'High',
-    category: 'Vulnerable Components',
-    owasp: 'A06:2021-Vulnerable Components',
-    file: 'package.json:14',
-    timestamp: '3 hours ago',
-    read: true,
-    icon: <Bug size={18} />,
-  },
-  {
-    id: 7,
-    title: 'OWASP Top 10 2025 Draft Published',
-    description: 'The OWASP Foundation has released a new draft of the Top 10 for 2025 with 3 updated categories. Bob has been updated to reflect these changes.',
-    priority: 'System',
-    category: 'System Updates',
-    owasp: null,
-    file: null,
-    timestamp: '5 hours ago',
-    read: true,
-    icon: <Info size={18} />,
-  },
-  {
-    id: 8,
-    title: 'Server-Side Request Forgery in Webhook Handler',
-    description: 'The webhook processing endpoint accepts arbitrary URLs without validation, enabling SSRF attacks against internal services.',
-    priority: 'Critical',
-    category: 'SQL Injection',
-    owasp: 'A10:2021-SSRF',
-    file: 'src/webhooks/handler.ts:67',
-    timestamp: '6 hours ago',
-    read: false,
-    icon: <ServerCrash size={18} />,
-  },
-  {
-    id: 9,
-    title: 'MCP Connection Re-established',
-    description: 'The Model Context Protocol connection to GitHub was temporarily interrupted and has been automatically re-established. No data loss occurred.',
-    priority: 'System',
-    category: 'System Updates',
-    owasp: null,
-    file: null,
-    timestamp: '8 hours ago',
-    read: true,
-    icon: <RefreshCw size={18} />,
-  },
-]
 
 // ── Priority Config ──────────────────────────────────────────────────────────
 
@@ -140,7 +27,25 @@ const PRIORITY_CONFIG = {
     glow: 'shadow-orange-500/5',
     dot: 'bg-orange-500',
   },
-  System: {
+  Medium: {
+    border: 'border-l-yellow-500',
+    bg: 'bg-yellow-500/[0.03]',
+    hoverBg: 'hover:bg-yellow-500/[0.06]',
+    badge: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/25',
+    icon: 'text-yellow-300',
+    glow: 'shadow-yellow-500/5',
+    dot: 'bg-yellow-500',
+  },
+  Low: {
+    border: 'border-l-blue-500',
+    bg: 'bg-blue-500/[0.03]',
+    hoverBg: 'hover:bg-blue-500/[0.06]',
+    badge: 'bg-blue-500/15 text-blue-400 border-blue-500/25',
+    icon: 'text-blue-400',
+    glow: 'shadow-blue-500/5',
+    dot: 'bg-blue-500',
+  },
+  Info: {
     border: 'border-l-blue-500',
     bg: 'bg-blue-500/[0.03]',
     hoverBg: 'hover:bg-blue-500/[0.06]',
@@ -151,16 +56,42 @@ const PRIORITY_CONFIG = {
   },
 }
 
-// ── Category options for filter ──────────────────────────────────────────────
+const PRIORITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Info']
 
-const CATEGORIES = [
-  'All',
-  'SQL Injection',
-  'Broken Access Control',
-  'Cryptographic Failures',
-  'Vulnerable Components',
-  'System Updates',
-]
+const iconForPriority = (priority) => {
+  switch (priority) {
+    case 'Critical':
+      return <ShieldAlert size={18} />
+    case 'High':
+      return <Shield size={18} />
+    case 'Medium':
+      return <AlertTriangle size={18} />
+    case 'Low':
+      return <Database size={18} />
+    default:
+      return <Info size={18} />
+  }
+}
+
+const buildNotificationsFromFindings = (findings = []) => {
+  return findings.map((finding, index) => {
+    const priority = finding.severity || 'Info'
+    const fileLabel = finding.file ? `${finding.file}${finding.line !== null && finding.line !== undefined ? `:${finding.line}` : ''}` : null
+
+    return {
+      id: finding.id || `${finding.ruleId || finding.title || 'finding'}-${index}`,
+      title: finding.title,
+      description: finding.description || finding.suggestion || 'No description returned by the backend scan.',
+      priority,
+      category: finding.category || 'Uncategorized',
+      owasp: finding.ruleId || finding.category || null,
+      file: fileLabel,
+      timestamp: finding.ruleId ? `Rule ${finding.ruleId}` : 'Current scan',
+      read: false,
+      icon: iconForPriority(priority),
+    }
+  })
+}
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -311,11 +242,21 @@ const NotificationCard = ({ notification, onToggleRead, onDismiss }) => {
 
 // ── Main Notifications Component ─────────────────────────────────────────────
 
-const Notifications = () => {
-  const [notifications, setNotifications] = useState(NOTIFICATIONS)
+const Notifications = ({ findings = [], summary = {}, loading = false, error = '', source = '' }) => {
+  const [notifications, setNotifications] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState('All')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const colorMap = {
+    red: { dot: 'bg-red-500', text: 'text-red-400' },
+    orange: { dot: 'bg-orange-500', text: 'text-orange-400' },
+    yellow: { dot: 'bg-yellow-400', text: 'text-yellow-300' },
+    blue: { dot: 'bg-blue-500', text: 'text-blue-400' },
+  }
+
+  useEffect(() => {
+    setNotifications(buildNotificationsFromFindings(findings))
+  }, [findings])
 
   const toggleRead = (id) => {
     setNotifications(prev =>
@@ -343,14 +284,18 @@ const Notifications = () => {
   }, [notifications, searchQuery, activeFilter])
 
   const unreadCount = notifications.filter(n => !n.read).length
-  const criticalCount = notifications.filter(n => n.priority === 'Critical' && !n.read).length
+  const criticalCount = Number(summary.critical ?? notifications.filter(n => n.priority === 'Critical' && !n.read).length) || 0
 
   // Priority counts for summary
   const counts = {
-    Critical: notifications.filter(n => n.priority === 'Critical').length,
-    High: notifications.filter(n => n.priority === 'High').length,
-    System: notifications.filter(n => n.priority === 'System').length,
+    Critical: Number(summary.critical ?? notifications.filter(n => n.priority === 'Critical').length) || 0,
+    High: Number(summary.high ?? notifications.filter(n => n.priority === 'High').length) || 0,
+    Medium: Number(summary.medium ?? notifications.filter(n => n.priority === 'Medium').length) || 0,
+    Low: Number(summary.low ?? notifications.filter(n => n.priority === 'Low').length) || 0,
+    Info: Number(summary.info ?? notifications.filter(n => n.priority === 'Info').length) || 0,
   }
+
+  const categories = ['All', ...new Set(notifications.map(n => n.category).filter(Boolean))]
 
   return (
     <div className="space-y-6">
@@ -362,14 +307,15 @@ const Notifications = () => {
             Notifications & Alerts
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            {unreadCount} unread · {criticalCount} critical requiring attention
+            {loading ? 'Loading current scan alerts…' : error && !notifications.length ? error : `${unreadCount} unread · ${criticalCount} critical requiring attention`}
           </p>
         </div>
         <motion.button
           onClick={markAllRead}
+          disabled={!notifications.length}
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
-          className="text-xs font-bold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/15 px-4 py-2.5 rounded-xl border border-blue-500/20 transition-all"
+          className="text-xs font-bold text-blue-400 hover:text-blue-300 disabled:text-gray-600 disabled:bg-white/[0.03] disabled:border-white/[0.06] bg-blue-500/10 hover:bg-blue-500/15 px-4 py-2.5 rounded-xl border border-blue-500/20 transition-all"
         >
           <span className="flex items-center gap-2">
             <CheckCircle size={13} />
@@ -383,16 +329,22 @@ const Notifications = () => {
         {[
           { label: 'Critical', count: counts.Critical, color: 'red' },
           { label: 'High', count: counts.High, color: 'orange' },
-          { label: 'System', count: counts.System, color: 'blue' },
+          { label: 'Medium', count: counts.Medium, color: 'yellow' },
+          { label: 'Info', count: counts.Info, color: 'blue' },
         ].map(item => (
+          (() => {
+            const palette = colorMap[item.color] || colorMap.blue
+            return (
           <div
             key={item.label}
             className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/[0.025] border border-white/[0.06]`}
           >
-            <div className={`w-2.5 h-2.5 rounded-full bg-${item.color}-500`} />
+            <div className={`w-2.5 h-2.5 rounded-full ${palette.dot}`} />
             <span className="text-xs text-gray-400 font-semibold">{item.label}</span>
-            <span className={`text-sm font-black text-${item.color}-400`}>{item.count}</span>
+            <span className={`text-sm font-black ${palette.text}`}>{item.count}</span>
           </div>
+            )
+          })()
         ))}
         <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/[0.025] border border-white/[0.06] ml-auto">
           <span className="text-xs text-gray-400 font-semibold">Total</span>
@@ -448,7 +400,7 @@ const Notifications = () => {
                 transition={{ duration: 0.15 }}
                 className="absolute right-0 mt-2 w-56 bg-[#12141c] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/60 z-50 overflow-hidden backdrop-blur-xl"
               >
-                {CATEGORIES.map(cat => (
+                {categories.map(cat => (
                   <button
                     key={cat}
                     onClick={() => { setActiveFilter(cat); setShowFilterMenu(false) }}
@@ -469,32 +421,48 @@ const Notifications = () => {
 
       {/* ── Notification List ── */}
       <motion.div layout className="space-y-3">
-        <AnimatePresence>
-          {filtered.length > 0 ? (
-            filtered.map(n => (
+        {loading && !notifications.length ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map(index => (
+              <div key={index} className="p-5 rounded-2xl border border-white/[0.05] bg-white/[0.02] animate-pulse">
+                <div className="h-4 w-1/3 rounded bg-white/10 mb-3" />
+                <div className="h-3 w-2/3 rounded bg-white/10 mb-2" />
+                <div className="h-3 w-1/2 rounded bg-white/10" />
+              </div>
+            ))}
+          </div>
+        ) : error && !notifications.length ? (
+          <div className="rounded-3xl border border-red-500/20 bg-red-500/5 p-8 text-center text-red-100">
+            <AlertTriangle size={32} className="mx-auto mb-3 text-red-300" />
+            <h3 className="text-base font-bold mb-2">Unable to load alerts</h3>
+            <p className="text-sm text-red-100/70">{error || 'The backend did not return notification data for this scan.'}</p>
+          </div>
+        ) : filtered.length > 0 ? (
+          <AnimatePresence>
+            {filtered.map(n => (
               <NotificationCard
                 key={n.id}
                 notification={n}
                 onToggleRead={toggleRead}
                 onDismiss={dismiss}
               />
-            ))
-          ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center py-20 text-center"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-5">
-                <Bell size={28} className="text-gray-700" />
-              </div>
-              <h3 className="text-base font-bold text-gray-500 mb-1.5">No matching alerts</h3>
-              <p className="text-sm text-gray-600 max-w-xs">
-                Try adjusting your search query or filter to find what you're looking for.
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            ))}
+          </AnimatePresence>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-20 text-center rounded-3xl border border-dashed border-white/[0.08] bg-white/[0.02]"
+          >
+            <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-5">
+              <Bell size={28} className="text-gray-700" />
+            </div>
+            <h3 className="text-base font-bold text-gray-300 mb-1.5">No alerts for this scan</h3>
+            <p className="text-sm text-gray-500 max-w-xs">
+              {source ? 'The backend scan did not return any alerts. Try a different repository or local folder.' : 'Connect a repository or run a local scan to populate alerts.'}
+            </p>
+          </motion.div>
+        )}
       </motion.div>
     </div>
   )
