@@ -101,12 +101,81 @@ const extractFindings = (payload) => {
     payload?.vulnerabilities,
     payload?.issues,
     payload?.results,
+    payload?.scan?.findings,
+    payload?.scan?.results,
+    payload?.analysis?.findings,
+    payload?.report?.findings,
     payload?.data,
     payload,
   ]
 
   const rawFindings = candidates.find(candidate => Array.isArray(candidate)) || []
   return rawFindings.map((finding, index) => normalizeFinding(finding, index))
+}
+
+const extractSummary = (payload, findings) => {
+  const summary = payload?.summary || payload?.stats || payload?.statistics || payload?.metrics || payload?.scanSummary || {}
+  const severityCounts = summary?.severityCounts || payload?.severityCounts || payload?.severity_counts || {}
+  const fallbackCounts = findings.reduce((accumulator, finding) => {
+    const severity = normalizeSeverity(finding.severity)
+    accumulator[severity] = (accumulator[severity] || 0) + 1
+    return accumulator
+  }, {})
+  const total = Number(summary.total ?? summary.totalFindings ?? summary.findings ?? findings.length) || 0
+  const critical = Number(summary.critical ?? severityCounts.Critical ?? severityCounts.critical ?? fallbackCounts.Critical ?? 0) || 0
+  const high = Number(summary.high ?? severityCounts.High ?? severityCounts.high ?? fallbackCounts.High ?? 0) || 0
+  const medium = Number(summary.medium ?? severityCounts.Medium ?? severityCounts.medium ?? fallbackCounts.Medium ?? 0) || 0
+  const low = Number(summary.low ?? severityCounts.Low ?? severityCounts.low ?? fallbackCounts.Low ?? 0) || 0
+  const info = Number(summary.info ?? severityCounts.Info ?? severityCounts.info ?? fallbackCounts.Info ?? 0) || 0
+  const categories = Number(summary.categories ?? summary.owaspCategories ?? summary.categoryCount ?? new Set(findings.map(vuln => vuln.category).filter(Boolean)).size) || 0
+  const withSuggestions = Number(summary.withSuggestions ?? summary.fixable ?? summary.actionable ?? findings.filter(vuln => vuln.suggestion || vuln.fixSnippet).length) || 0
+  const actionableRate = Number(summary.actionableRate ?? summary.fixableRate ?? (total ? Math.round((withSuggestions / total) * 100) : 0)) || 0
+  const securityScore = Number(summary.securityScore ?? summary.score ?? summary.healthScore ?? (total ? Math.max(0, 100 - (critical * 18) - (high * 10) - (medium * 5) - (low * 2)) : 100)) || 0
+
+  return {
+    total,
+    critical,
+    high,
+    medium,
+    low,
+    info,
+    categories,
+    withSuggestions,
+    actionableRate,
+    securityScore,
+    payload,
+  }
+}
+
+const buildThreatFeed = (payload, findings) => {
+  const feed = payload?.alerts || payload?.notifications || payload?.events || payload?.activity || payload?.feed
+
+  if (Array.isArray(feed) && feed.length > 0) {
+    return feed.slice(0, 4).map((item, index) => ({
+      id: item.id || item.key || index,
+      msg: item.msg || item.message || item.title || item.description || 'Backend alert received',
+      severity: normalizeSeverity(item.severity || item.priority),
+      time: item.time || item.timestamp || item.label || 'Live',
+    }))
+  }
+
+  if (findings.length === 0) {
+    return [
+      {
+        id: 'idle',
+        msg: 'Awaiting scan results from /scan or /scan-local',
+        severity: 'Info',
+        time: 'Ready',
+      },
+    ]
+  }
+
+  return findings.slice(0, 4).map((finding, index) => ({
+    id: finding.id || index,
+    msg: `${finding.severity} ${finding.title}${finding.file ? ` in ${finding.file}${finding.line !== null ? `:${finding.line}` : ''}` : ''}`,
+    severity: finding.severity,
+    time: finding.category || finding.ruleId || 'Current scan',
+  }))
 }
 
 const isLocalSource = (source) => {
@@ -164,13 +233,6 @@ const fetchScanResults = async (source, signal, preferredMode) => {
 
   throw lastError || new Error('Unable to load scan results.')
 }
-
-const THREAT_FEED = [
-  { id: 1, msg: 'New CVE-2024-3094 detected in xz-utils dependency', severity: 'Critical', time: '2m ago' },
-  { id: 2, msg: 'OWASP Top 10 2025 draft published — 3 new categories', severity: 'Info', time: '1h ago' },
-  { id: 3, msg: 'GitHub Secret Scanning blocked 2 commits', severity: 'High', time: '3h ago' },
-  { id: 4, msg: 'Dependency audit complete — 4 issues found', severity: 'Medium', time: '5h ago' },
-]
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -243,15 +305,21 @@ const NavItem = ({ icon, label, active = false, onClick, badge }) => (
   </motion.div>
 )
 
-const ThreatFeedTicker = () => {
+const ThreatFeedTicker = ({ items = [] }) => {
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
-    const t = setInterval(() => setIndex(i => (i + 1) % THREAT_FEED.length), 4000)
-    return () => clearInterval(t)
-  }, [])
+    if (!items.length) return undefined
 
-  const item = THREAT_FEED[index]
+    const t = setInterval(() => setIndex(i => (i + 1) % items.length), 4000)
+    return () => clearInterval(t)
+  }, [items])
+
+  const item = items[index % (items.length || 1)] || {
+    msg: 'Awaiting scan results from the backend',
+    severity: 'Info',
+    time: 'Ready',
+  }
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/3 border border-white/5 max-w-sm overflow-hidden">
@@ -287,9 +355,11 @@ const Dashboard = ({ repoUrl }) => {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [scanEndpoint, setScanEndpoint] = useState('')
+  const [scanPayload, setScanPayload] = useState(null)
   const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
   const [localFolderPath, setLocalFolderPath] = useState('')
   const [scanSource, setScanSource] = useState(repoUrl || '')
+  
 
   const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
     const controller = new AbortController()
@@ -301,20 +371,23 @@ const Dashboard = ({ repoUrl }) => {
     if (!source) {
       setFindings([])
       setScanEndpoint('')
+      setScanPayload(null)
       setIsLoading(false)
       setIsRefreshing(false)
       return () => controller.abort()
     }
 
     try {
-      const { findings: nextFindings, endpoint } = await fetchScanResults(source, controller.signal, preferredMode)
+      const { findings: nextFindings, endpoint, payload } = await fetchScanResults(source, controller.signal, preferredMode)
       setFindings(nextFindings)
       setScanEndpoint(endpoint)
+      setScanPayload(payload)
     } catch (error) {
       if (error.name !== 'AbortError') {
         setLoadError(error.message || 'Unable to load scan results.')
         setFindings([])
         setScanEndpoint('')
+        setScanPayload(null)
       }
     } finally {
       setIsLoading(false)
@@ -346,6 +419,24 @@ const Dashboard = ({ repoUrl }) => {
     loadResults({ source: nextSource, preferredMode: 'local' })
   }
 
+  useEffect(() => {
+    if (!repoUrl?.trim()) {
+      setRemoteRepoUrl('')
+      setScanSource('')
+      setFindings([])
+      setScanEndpoint('')
+      setScanPayload(null)
+      setIsLoading(false)
+      setLoadError('')
+      return
+    }
+
+    const nextRepoUrl = repoUrl.trim()
+    setRemoteRepoUrl(nextRepoUrl)
+    setScanSource(nextRepoUrl)
+    loadResults({ source: nextRepoUrl, preferredMode: 'remote' })
+  }, [repoUrl])
+
   const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'
 
   const filteredVulns = findings.filter(v =>
@@ -357,21 +448,8 @@ const Dashboard = ({ repoUrl }) => {
     return findings.find(vuln => vuln.id === selectedVulnId) || findings[0]
   }, [findings, selectedVulnId])
 
-  const overviewStats = useMemo(() => {
-    const critical = findings.filter(vuln => vuln.severity === 'Critical').length
-    const high = findings.filter(vuln => vuln.severity === 'High').length
-    const categories = new Set(findings.map(vuln => vuln.category).filter(Boolean)).size
-    const withSuggestions = findings.filter(vuln => vuln.suggestion || vuln.fixSnippet).length
-
-    return {
-      total: findings.length,
-      critical,
-      categories,
-      withSuggestions,
-      actionableRate: findings.length ? Math.round((withSuggestions / findings.length) * 100) : 0,
-      high,
-    }
-  }, [findings])
+  const overviewStats = useMemo(() => extractSummary(scanPayload, findings), [scanPayload, findings])
+  const threatFeedItems = useMemo(() => buildThreatFeed(scanPayload, findings), [scanPayload, findings])
 
   const scanLabel = scanEndpoint === '/scan-local' ? 'Local scan' : scanEndpoint === '/scan' ? 'Remote scan' : 'Scan pending'
   const hasSearchResults = filteredVulns.length > 0
@@ -379,7 +457,7 @@ const Dashboard = ({ repoUrl }) => {
   const navItems = [
     { id: 'overview', icon: <LayoutDashboard size={17} />, label: 'Overview' },
     { id: 'vulnerabilities', icon: <ShieldAlert size={17} />, label: 'Vulnerabilities', badge: overviewStats.critical || undefined },
-    { id: 'notifications', icon: <Bell size={17} />, label: 'Notifications', badge: 4 },
+    { id: 'notifications', icon: <Bell size={17} />, label: 'Notifications', badge: findings.length || undefined },
     { id: 'codebase', icon: <FileCode size={17} />, label: 'Codebase View' },
     { id: 'reports', icon: <BarChart size={17} />, label: 'Reports' },
   ]
@@ -463,7 +541,7 @@ const Dashboard = ({ repoUrl }) => {
             <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/8 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">
               {scanLabel}
             </div>
-            <ThreatFeedTicker />
+            <ThreatFeedTicker items={threatFeedItems} />
           </div>
 
           <div className="flex items-center gap-3">
@@ -587,8 +665,8 @@ const Dashboard = ({ repoUrl }) => {
                 {[
                   { label: 'Active source', value: scanSource || 'None selected' },
                   { label: 'Endpoint', value: scanEndpoint || 'Not started' },
-                  { label: 'Severity groups', value: String(new Set(findings.map(item => item.severity)).size) },
-                  { label: 'OWASP mappings', value: String(new Set(findings.map(item => item.category)).size) },
+                  { label: 'Severity groups', value: String(new Set(findings.map(item => item.severity).filter(Boolean)).size) },
+                  { label: 'OWASP mappings', value: String(new Set(findings.map(item => item.category).filter(Boolean)).size) },
                 ].map(item => (
                   <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
                     <span className="text-xs text-gray-500 uppercase tracking-[0.2em]">{item.label}</span>
@@ -800,14 +878,14 @@ const Dashboard = ({ repoUrl }) => {
             {/* ── Notifications ── */}
             {activeTab === 'notifications' && (
               <motion.div key="notifications" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-                <Notifications />
+                <Notifications findings={findings} summary={overviewStats} loading={isLoading} error={loadError} source={scanSource} />
               </motion.div>
             )}
 
             {/* ── Reports ── */}
             {activeTab === 'reports' && (
               <motion.div key="reports" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-                <Reports />
+                <Reports findings={findings} summary={overviewStats} loading={isLoading} error={loadError} source={scanSource} />
               </motion.div>
             )}
 
