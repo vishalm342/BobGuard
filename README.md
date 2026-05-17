@@ -179,6 +179,8 @@ npm run dev
 
 ## Testing the scanner
 
+For pre-deployment manual QA, use [docs/manual-qa-checklist.md](docs/manual-qa-checklist.md) as the repeatable checklist for login, remote scans, local scans, empty states, malformed input, and detail-panel verification.
+
 ### Option 1: Test with Swagger UI
 
 Open:
