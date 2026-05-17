@@ -364,9 +364,13 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
   const scanRequestIdRef = useRef(0)
   const abortRef = useRef(null)
   const initialResultRef = useRef(initialScanResult)
+  const scanSourceRef = useRef(repoUrl || '')
 
+  useEffect(() => {
+    scanSourceRef.current = scanSource
+  }, [scanSource])
 
-  const loadResults = useCallback(async ({ source = scanSource, preferredMode } = {}) => {
+  const loadResults = useCallback(async ({ source = scanSourceRef.current, preferredMode } = {}) => {
     const requestId = ++scanRequestIdRef.current
     if (abortRef.current) {
       abortRef.current.abort()
@@ -393,7 +397,6 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
       setIsRefreshing(false)
       setScanStatus('idle')
       window.clearTimeout(timeoutId)
-      controller.abort()
       return
     }
 
@@ -425,7 +428,7 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
         setIsRefreshing(false)
       }
     }
-  }, [scanSource])
+  }, [])
 
   const handleRefresh = () => {
     if (isRefreshing || scanStatus === 'submitting' || scanStatus === 'scanning') return
@@ -455,24 +458,14 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
     loadResults({ source: nextSource, preferredMode: 'local' })
   }
 
-  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!repoUrl?.trim()) {
-      setRemoteRepoUrl('')
-      setScanSource('')
-      setFindings([])
-      setScanEndpoint('')
-      setScanPayload(null)
-      setIsLoading(false)
-      setScanStatus('idle')
-      setLoadError('')
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadResults({ source: '' })
       return
     }
 
     const nextRepoUrl = repoUrl.trim()
-    setRemoteRepoUrl(nextRepoUrl)
-    setScanSource(nextRepoUrl)
-    setScanStatus('submitting')
     if (initialResultRef.current) {
       initialResultRef.current = null
       return
@@ -483,7 +476,6 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
       if (abortRef.current) abortRef.current.abort()
     }
   }, [repoUrl, loadResults])
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'
 
