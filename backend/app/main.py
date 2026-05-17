@@ -6,9 +6,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.repo_service import cleanup_repository, clone_repository
 from app.scanner import scan_repository
 from app.schemas import ScanRequest, ScanResponse
+from app.bob_routes import router as bob_router
 
 
 app = FastAPI(title="BobGuard Backend", version="1.0.0")
+
+app.include_router(bob_router)
 
 
 app.add_middleware(
