@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, Eye, EyeOff, Mail, User, Lock,
@@ -28,10 +26,6 @@ const AnimatedBackground = () => (
   </div>
 )
 
-/* const SignUp = () => {
-  const navigate = useNavigate(); // <--- Add this line
-  
-  // Keep all your other state and animation logic here...const SignUp = () => {
 const FloatingParticles = () => {
   const particles = Array.from({ length: 20 }, (_, i) => ({
     id: i,

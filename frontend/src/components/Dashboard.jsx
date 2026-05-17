@@ -211,7 +211,7 @@ const fetchScanResults = async (source, signal, preferredMode) => {
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoUrl: source, repo_url: source, source }),
+        body: JSON.stringify({ repoUrl: source, repo_url: source, source, folder_path: source }),
         signal,
       })
 
@@ -346,26 +346,33 @@ const ThreatFeedTicker = ({ items = [] }) => {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
-const Dashboard = ({ repoUrl }) => {
+const Dashboard = ({ repoUrl, initialScanResult }) => {
   const [selectedVulnId, setSelectedVulnId] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [scanStatus, setScanStatus] = useState('idle')
-  const [findings, setFindings] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [scanStatus, setScanStatus] = useState(initialScanResult ? 'success' : 'idle')
+  const seedFindings = initialScanResult ? extractFindings(initialScanResult.payload) : []
+  const [findings, setFindings] = useState(seedFindings)
+  const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const [scanEndpoint, setScanEndpoint] = useState('')
-  const [scanPayload, setScanPayload] = useState(null)
+  const [scanEndpoint, setScanEndpoint] = useState(initialScanResult?.endpoint || '')
+  const [scanPayload, setScanPayload] = useState(initialScanResult?.payload || null)
   const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
   const [localFolderPath, setLocalFolderPath] = useState('')
   const [scanSource, setScanSource] = useState(repoUrl || '')
   const scanRequestIdRef = useRef(0)
+  const abortRef = useRef(null)
+  const initialResultRef = useRef(initialScanResult)
 
 
   const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
     const requestId = ++scanRequestIdRef.current
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
     const controller = new AbortController()
+    abortRef.current = controller
     let timedOut = false
     const timeoutId = window.setTimeout(() => {
       timedOut = true
@@ -465,7 +472,15 @@ const Dashboard = ({ repoUrl }) => {
     setRemoteRepoUrl(nextRepoUrl)
     setScanSource(nextRepoUrl)
     setScanStatus('submitting')
+    if (initialResultRef.current) {
+      initialResultRef.current = null
+      return
+    }
+
     loadResults({ source: nextRepoUrl, preferredMode: 'remote' })
+    return () => {
+      if (abortRef.current) abortRef.current.abort()
+    }
   }, [repoUrl])
 
   const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'
