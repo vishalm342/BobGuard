@@ -20,3 +20,18 @@ class ScanResponse(BaseModel):
     repo_url: str
     findings: List[Finding]
     total_findings: int
+
+
+class BobExplainFindingRequest(BaseModel):
+    issue_type: str
+    severity: str
+    owasp_category: str
+    file_path: str
+    description: str
+    code_snippet: Optional[str] = None
+
+class BobExplainFindingResponse(BaseModel):
+    explanation: str
+    why_it_matters: str
+    remediation_steps: List[str]
+    safer_code_suggestion: Optional[str] = None
