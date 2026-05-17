@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LayoutDashboard,
   ShieldAlert,
@@ -210,7 +210,7 @@ const fetchScanResults = async (source, signal, preferredMode) => {
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoUrl: source, repo_url: source, source }),
+        body: JSON.stringify({ repoUrl: source, repo_url: source, source, folder_path: source }),
         signal,
       })
 
@@ -345,55 +345,68 @@ const ThreatFeedTicker = ({ items = [] }) => {
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
-const Dashboard = ({ repoUrl }) => {
+const Dashboard = ({ repoUrl, initialScanResult, onRetry, onLogout }) => {
   const [selectedVulnId, setSelectedVulnId] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [findings, setFindings] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+
+  // Seed findings from the Scanner fetch result so we never double-request
+  const seedFindings = initialScanResult ? extractFindings(initialScanResult.payload) : []
+  const [findings, setFindings] = useState(seedFindings)
+  // isLoading starts false when we already have results from Scanner
+  const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const [scanEndpoint, setScanEndpoint] = useState('')
-  const [scanPayload, setScanPayload] = useState(null)
+  const [scanEndpoint, setScanEndpoint] = useState(initialScanResult?.endpoint || '')
+  const [scanPayload, setScanPayload] = useState(initialScanResult?.payload || null)
   const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
   const [localFolderPath, setLocalFolderPath] = useState('')
   const [scanSource, setScanSource] = useState(repoUrl || '')
 
+  // Tracks the AbortController for the current in-flight request
+  const abortRef = useRef(null)
+
 
   const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
+    // Cancel any previous in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
     const controller = new AbortController()
+    abortRef.current = controller
 
+    // Clear stale findings immediately so the UI never shows old data
+    setFindings([])
+    setScanEndpoint('')
+    setScanPayload(null)
+    setLoadError('')
     setIsRefreshing(true)
     setIsLoading(true)
-    setLoadError('')
 
     if (!source) {
-      setFindings([])
-      setScanEndpoint('')
-      setScanPayload(null)
       setIsLoading(false)
       setIsRefreshing(false)
-      return () => controller.abort()
+      return
     }
 
     try {
       const { findings: nextFindings, endpoint, payload } = await fetchScanResults(source, controller.signal, preferredMode)
-      setFindings(nextFindings)
-      setScanEndpoint(endpoint)
-      setScanPayload(payload)
+      // Only apply if this request was not superseded
+      if (!controller.signal.aborted) {
+        setFindings(nextFindings)
+        setScanEndpoint(endpoint)
+        setScanPayload(payload)
+      }
     } catch (error) {
       if (error.name !== 'AbortError') {
         setLoadError(error.message || 'Unable to load scan results.')
-        setFindings([])
-        setScanEndpoint('')
-        setScanPayload(null)
       }
     } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
+      if (!controller.signal.aborted) {
+        setIsLoading(false)
+        setIsRefreshing(false)
+      }
     }
-
-    return () => controller.abort()
   }
 
   const handleRefresh = () => {
@@ -418,6 +431,11 @@ const Dashboard = ({ repoUrl }) => {
     loadResults({ source: nextSource, preferredMode: 'local' })
   }
 
+  // Guard: only trigger a fetch from this effect when we do NOT already have
+  // results from the Scanner page (initialScanResult). If Scanner already
+  // fetched for this repoUrl we skip the request entirely.
+  const initialResultRef = useRef(initialScanResult)
+
   useEffect(() => {
     if (!repoUrl?.trim()) {
       setRemoteRepoUrl('')
@@ -433,7 +451,21 @@ const Dashboard = ({ repoUrl }) => {
     const nextRepoUrl = repoUrl.trim()
     setRemoteRepoUrl(nextRepoUrl)
     setScanSource(nextRepoUrl)
+
+    // If we already have a fresh result for this exact URL (from Scanner),
+    // skip the duplicate fetch. Clear the guard so subsequent URL changes
+    // (e.g. user submits a new URL from the Dashboard) do trigger a fetch.
+    if (initialResultRef.current) {
+      initialResultRef.current = null
+      return
+    }
+
     loadResults({ source: nextRepoUrl, preferredMode: 'remote' })
+
+    // Cleanup: abort if repoUrl changes before the request settles
+    return () => {
+      if (abortRef.current) abortRef.current.abort()
+    }
   }, [repoUrl])
 
   const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'

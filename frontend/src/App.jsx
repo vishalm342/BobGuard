@@ -14,6 +14,16 @@ const pageVariants = {
   exit: { opacity: 0, y: -16 },
 }
 
+const getStoredBoolean = (key, fallback = false) => {
+  if (typeof window === 'undefined') return fallback
+  return window.localStorage.getItem(key) === 'true'
+}
+
+const getStoredString = (key, fallback = '') => {
+  if (typeof window === 'undefined') return fallback
+  return window.localStorage.getItem(key) || fallback
+}
+
 const ErrorState = ({ onRetry }) => (
   <motion.div
     initial={{ opacity: 0, scale: 0.95 }}
@@ -46,33 +56,58 @@ const ErrorState = ({ onRetry }) => (
 function AnimatedRoutes() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [repoUrl, setRepoUrl] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [hasError, setHasError] = useState(false)
+  const [repoUrl, setRepoUrl] = useState(() => getStoredString('bobguard_repo_url', ''))
+  const [isAuthenticated, setIsAuthenticated] = useState(() => getStoredBoolean('bobguard_auth', false))
+  // scanFindings carries the results from the Scanner fetch so Dashboard
+  // can render them immediately without firing a second HTTP request.
+  const [scanFindings, setScanFindings] = useState(null)
 
   const handleAuthSuccess = () => {
     setIsAuthenticated(true)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('bobguard_auth', 'true')
+    }
     navigate('/connect')
   }
 
   const handleConnect = (url) => {
     setRepoUrl(url)
-    setHasError(false)
+    setScanFindings(null) // clear previous scan when a new URL is submitted
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('bobguard_repo_url', url)
+    }
     navigate('/scanning')
   }
 
-  const handleScanComplete = () => {
-    if (Math.random() > 0.9) {
-      setHasError(true)
-      return
+  // Called by Scanner with the real fetch result.
+  // Only navigates if the fetch actually succeeded.
+  const handleScanComplete = (result) => {
+    if (result?.findings !== undefined) {
+      setScanFindings(result)
     }
-
     navigate('/dashboard')
   }
 
-  const handleRetry = () => {
-    setHasError(false)
+  // Called by Scanner when the fetch itself fails (backend unavailable etc.)
+  const handleScanError = () => {
+    setScanFindings(null)
     navigate('/connect')
+  }
+
+  const handleRetry = () => {
+    setScanFindings(null)
+    navigate('/connect')
+  }
+
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    setRepoUrl('')
+    setScanFindings(null)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('bobguard_auth')
+      window.localStorage.removeItem('bobguard_repo_url')
+    }
+    navigate('/signin')
   }
 
   const ProtectedRoute = ({ children }) => {
@@ -82,54 +117,68 @@ function AnimatedRoutes() {
     return children
   }
 
-  if (hasError) {
-    return <ErrorState onRetry={handleRetry} />
-  }
-
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={
-          <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
-            <SignUp onSignUp={handleAuthSuccess} />
-          </motion.div>
-        } />
-
-        <Route path="/signin" element={
-          <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
-            <SignIn onSignIn={handleAuthSuccess} />
-          </motion.div>
-        } />
-
-        <Route path="/signup" element={
-          <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
-            <SignUp onSignUp={handleAuthSuccess} />
-          </motion.div>
-        } />
-
-        <Route path="/connect" element={
-          <ProtectedRoute>
+        <Route
+          path="/"
+          element={
             <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
-              <Connect onConnect={handleConnect} />
+              <SignUp onSignUp={handleAuthSuccess} />
             </motion.div>
-          </ProtectedRoute>
-        } />
+          }
+        />
 
-        <Route path="/scanning" element={
-          <ProtectedRoute>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-              <Scanner repoUrl={repoUrl} onComplete={handleScanComplete} />
+        <Route
+          path="/signin"
+          element={
+            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
+              <SignIn onSignIn={handleAuthSuccess} />
             </motion.div>
-          </ProtectedRoute>
-        } />
+          }
+        />
 
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, ease: 'easeOut' }}>
-              <Dashboard repoUrl={repoUrl} />
+        <Route
+          path="/signup"
+          element={
+            <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
+              <SignUp onSignUp={handleAuthSuccess} />
             </motion.div>
-          </ProtectedRoute>
-        } />
+          }
+        />
+
+        <Route
+          path="/connect"
+          element={
+            <ProtectedRoute>
+              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.45 }}>
+                <Connect onConnect={handleConnect} />
+              </motion.div>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/scanning"
+          element={
+            <ProtectedRoute>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+                <Scanner repoUrl={repoUrl} onComplete={handleScanComplete} onError={handleScanError} />
+              </motion.div>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, ease: 'easeOut' }}>
+                <Dashboard repoUrl={repoUrl} initialScanResult={scanFindings} onRetry={handleRetry} onLogout={handleLogout} />
+              </motion.div>
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </AnimatePresence>
   )
