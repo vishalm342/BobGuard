@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, ShieldCheck } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import SignUp from './components/SignUp'
 import SignIn from './components/SignIn'
 import Connect from './components/Connect'
@@ -14,7 +14,6 @@ const pageVariants = {
   exit: { opacity: 0, y: -16 },
 }
 
-// 4. Error State Component
 const ErrorState = ({ onRetry }) => (
   <motion.div
     initial={{ opacity: 0, scale: 0.95 }}
@@ -25,7 +24,7 @@ const ErrorState = ({ onRetry }) => (
     <div className="max-w-md w-full p-8 rounded-3xl border border-red-500/20 bg-red-500/5 text-center flex flex-col items-center shadow-[0_0_50px_rgba(239,68,68,0.1)]">
       <motion.div
         animate={{ y: [0, -8, 0] }}
-        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+        transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
         className="p-4 rounded-full bg-red-500/10 mb-6 shadow-[0_0_20px_rgba(239,68,68,0.2)]"
       >
         <AlertTriangle size={48} className="text-red-500" />
@@ -42,53 +41,49 @@ const ErrorState = ({ onRetry }) => (
       </button>
     </div>
   </motion.div>
-);
+)
 
 function AnimatedRoutes() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [repoUrl, setRepoUrl] = useState('');
-
-  // 1. Auth State Management
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [repoUrl, setRepoUrl] = useState('')
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [hasError, setHasError] = useState(false)
 
   const handleAuthSuccess = () => {
-    setIsAuthenticated(true);
-    navigate('/connect');
-  };
-
-  const handleConnect = (url) => {
-    setRepoUrl(url);
-    setHasError(false);
-    navigate('/scanning');
-
-    // Simulate a scan process. 10% chance to simulate an error for demonstration.
-    setTimeout(() => {
-      if (Math.random() > 0.9) {
-        setHasError(true);
-      } else {
-        navigate('/dashboard');
-      }
-    }, 4500);
-  };
-
-  const handleRetry = () => {
-    setHasError(false);
-    navigate('/connect');
+    setIsAuthenticated(true)
+    navigate('/connect')
   }
 
-  // Protect routes component
+  const handleConnect = (url) => {
+    setRepoUrl(url)
+    setHasError(false)
+    navigate('/scanning')
+  }
+
+  const handleScanComplete = () => {
+    if (Math.random() > 0.9) {
+      setHasError(true)
+      return
+    }
+
+    navigate('/dashboard')
+  }
+
+  const handleRetry = () => {
+    setHasError(false)
+    navigate('/connect')
+  }
+
   const ProtectedRoute = ({ children }) => {
     if (!isAuthenticated) {
-      // Elegant redirection for unauthorized access
-      return <Navigate to="/signin" replace />;
+      return <Navigate to="/signin" replace />
     }
-    return children;
-  };
+    return children
+  }
 
   if (hasError) {
-    return <ErrorState onRetry={handleRetry} />;
+    return <ErrorState onRetry={handleRetry} />
   }
 
   return (
@@ -120,11 +115,10 @@ function AnimatedRoutes() {
           </ProtectedRoute>
         } />
 
-        {/* 2. Loading State: Scanner component provides the highly visual analyzing transition */}
         <Route path="/scanning" element={
           <ProtectedRoute>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
-              <Scanner repoUrl={repoUrl} />
+              <Scanner repoUrl={repoUrl} onComplete={handleScanComplete} />
             </motion.div>
           </ProtectedRoute>
         } />
@@ -138,7 +132,7 @@ function AnimatedRoutes() {
         } />
       </Routes>
     </AnimatePresence>
-  );
+  )
 }
 
 function App() {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Database, ShieldCheck, Cpu, Lock, Terminal } from 'lucide-react'
 
@@ -100,9 +100,12 @@ const PulsingLogo = () => {
   )
 }
 
-const Scanner = ({ repoUrl }) => {
+const Scanner = ({ repoUrl, onComplete }) => {
   const [progress, setProgress] = useState(0)
   const [status, setStatus] = useState('Initializing MCP session...')
+  const hasCompletedRef = useRef(false)
+
+  const intervalRef = useRef(null)
 
   useEffect(() => {
     const statuses = [
@@ -116,25 +119,48 @@ const Scanner = ({ repoUrl }) => {
     ]
 
     let currentStatus = 0
-    const interval = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
-          clearInterval(interval)
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+          }
           return 100
         }
-        
+
         const statusIdx = Math.min(Math.floor((prev / 100) * statuses.length), statuses.length - 1)
         if (statusIdx > currentStatus) {
           currentStatus = statusIdx
           setStatus(statuses[statusIdx])
         }
-        
-        return prev + Math.random() * 1.5
+
+        const next = prev + Math.random() * 1.5
+        return next
       })
     }, 80)
 
-    return () => clearInterval(interval)
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
   }, [])
+
+  useEffect(() => {
+    // Use rounded progress to avoid the UI showing 100% due to rounding
+    if (Math.round(progress) < 100 || hasCompletedRef.current || !onComplete) return undefined
+
+    hasCompletedRef.current = true
+    // clear the progress interval so it doesn't re-run and clear our timeout
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    const timer = setTimeout(() => onComplete(), 600)
+    return () => clearTimeout(timer)
+  }, [progress, onComplete])
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen px-4 bg-[#0a0a0c] overflow-hidden text-white">

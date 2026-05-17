@@ -1,24 +1,18 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   LayoutDashboard,
   ShieldAlert,
   ShieldCheck,
   FileCode,
   Terminal,
-  ExternalLink,
   ChevronRight,
   AlertTriangle,
   CheckCircle,
-  GitPullRequest,
   Search,
   Filter,
   BarChart,
   Activity,
-  Zap,
-  Lock,
-  Eye,
   Bell,
-  Settings,
   RefreshCw,
   TrendingUp,
   Cpu
@@ -30,69 +24,215 @@ import Vulnerabilities from './Vulnerabilities'
 import Reports from './Reports'
 import Notifications from './Notifications'
 
-// ── Data ────────────────────────────────────────────────────────────────────
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
 
-const VULNERABILITIES = [
-  {
-    id: 1,
-    title: 'SQL Injection in user login',
-    severity: 'Critical',
-    category: 'A03:2021-Injection',
-    file: 'src/auth/login.js',
-    line: 45,
-    description: 'The query concatenates user input directly into the SQL string, allowing for potential data extraction or bypass.',
-    fix: 'Use parameterized queries with the database driver.',
-    codeSnippet: "const query = `SELECT * FROM users WHERE email = '${email}'`;",
-    fixSnippet: "const query = 'SELECT * FROM users WHERE email = ?';\nconst results = await db.execute(query, [email]);",
-    reasoning: "By using parameterized queries (also known as prepared statements), we separate the SQL code from the data. This ensures that the user-provided 'email' is always treated as data and never as executable code, directly addressing OWASP A03:2021-Injection."
-  },
-  {
-    id: 2,
-    title: 'Broken Access Control on profile update',
-    severity: 'High',
-    category: 'A01:2021-Broken Access Control',
-    file: 'src/api/user.py',
-    line: 112,
-    description: 'The endpoint does not verify if the requesting user has permission to modify the target profile ID.',
-    fix: 'Implement ownership validation middleware.',
-    codeSnippet: "def update_profile(user_id, data):\n    db.update('users', data, id=user_id)",
-    fixSnippet: "def update_profile(current_user, target_id, data):\n    if current_user.id != target_id and not current_user.is_admin:\n        raise Unauthorized()\n    db.update('users', data, id=target_id)",
-    reasoning: "This fix implements a mandatory access control check satisfying OWASP A01:2021, preventing insecure direct object references (IDOR)."
-  },
-  {
-    id: 3,
-    title: 'Sensitive Data Exposure in logs',
-    severity: 'Medium',
-    category: 'A02:2021-Cryptographic Failures',
-    file: 'src/config/logger.ts',
-    line: 22,
-    description: 'Application secrets and API keys are being logged in plain text during initialization.',
-    fix: 'Use a sanitization helper to mask sensitive fields before logging.',
-    codeSnippet: "logger.info('Connected with config: ' + JSON.stringify(config));",
-    fixSnippet: "logger.info('Connected with config: ' + maskSecrets(config));",
-    reasoning: "Masking secrets before logging complies with OWASP A02:2021, ensuring PII and credentials remain confidential."
-  },
-  {
-    id: 4,
-    title: 'Outdated vulnerable dependency',
-    severity: 'Low',
-    category: 'A06:2021-Vulnerable and Outdated Components',
-    file: 'package.json',
-    line: 14,
-    description: 'The version of "axios" being used has a known SSRF vulnerability.',
-    fix: 'Update axios to version 1.6.0 or higher.',
-    codeSnippet: '"axios": "0.21.1"',
-    fixSnippet: '"axios": "^1.6.0"',
-    reasoning: "Updating axios patches a critical SSRF flaw, satisfying OWASP A06:2021."
+// ── Data helpers ────────────────────────────────────────────────────────────
+
+const normalizeSeverity = (severity) => {
+  const value = String(severity || '').trim().toLowerCase()
+
+  if (value.startsWith('crit')) return 'Critical'
+  if (value.startsWith('high')) return 'High'
+  if (value.startsWith('med')) return 'Medium'
+  if (value.startsWith('low')) return 'Low'
+  if (value.startsWith('info')) return 'Info'
+
+  return severity ? String(severity) : 'Medium'
+}
+
+const normalizeLine = (line) => {
+  const parsed = Number(line)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const splitFileAndLine = (finding) => {
+  const candidates = [
+    finding.file,
+    finding.file_path,
+    finding.filePath,
+    finding.path,
+    finding.location,
+    finding.source_file,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    const text = String(candidate)
+    const match = text.match(/^(.*?):(\d+)$/)
+
+    if (match) {
+      return { file: match[1], line: normalizeLine(match[2]) }
+    }
+
+    return { file: text, line: normalizeLine(finding.line || finding.line_number || finding.lineNumber) }
   }
-]
 
-const THREAT_FEED = [
-  { id: 1, msg: 'New CVE-2024-3094 detected in xz-utils dependency', severity: 'Critical', time: '2m ago' },
-  { id: 2, msg: 'OWASP Top 10 2025 draft published — 3 new categories', severity: 'Info', time: '1h ago' },
-  { id: 3, msg: 'GitHub Secret Scanning blocked 2 commits', severity: 'High', time: '3h ago' },
-  { id: 4, msg: 'Dependency audit complete — 4 issues found', severity: 'Medium', time: '5h ago' },
-]
+  return {
+    file: 'Unknown file',
+    line: normalizeLine(finding.line || finding.line_number || finding.lineNumber),
+  }
+}
+
+const normalizeFinding = (finding, index = 0) => {
+  const { file, line } = splitFileAndLine(finding)
+  const title = finding.title || finding.name || finding.rule_name || `${finding.rule_id || 'Finding'} detected`
+  const suggestion = finding.suggestion || finding.fix || finding.fix_text || finding.fixText || finding.recommendation || finding.remediation || finding.remediation_text || finding.suggested_fix || finding.suggestedFix || finding.fixSnippet || ''
+
+  return {
+    id: finding.id || finding.rule_id || finding.ruleId || `${file}:${line || index}`,
+    title,
+    severity: normalizeSeverity(finding.severity),
+    category: finding.owasp_category || finding.category || finding.owasp || 'Uncategorized',
+    file,
+    line,
+    description: finding.description || finding.summary || finding.message || 'No description provided by the scan endpoint.',
+    suggestion,
+    codeSnippet: finding.codeSnippet || finding.code_snippet || finding.sourceSnippet || finding.original_code || finding.snippet || '',
+    fixSnippet: finding.fixSnippet || finding.fix_snippet || finding.fixed_snippet || suggestion,
+    reasoning: finding.reasoning || finding.explanation || finding.details || '',
+    ruleId: finding.rule_id || finding.ruleId || finding.id || null,
+    raw: finding,
+  }
+}
+
+const extractFindings = (payload) => {
+  const candidates = [
+    payload?.findings,
+    payload?.vulnerabilities,
+    payload?.issues,
+    payload?.results,
+    payload?.scan?.findings,
+    payload?.scan?.results,
+    payload?.analysis?.findings,
+    payload?.report?.findings,
+    payload?.data,
+    payload,
+  ]
+
+  const rawFindings = candidates.find(candidate => Array.isArray(candidate)) || []
+  return rawFindings.map((finding, index) => normalizeFinding(finding, index))
+}
+
+const extractSummary = (payload, findings) => {
+  const summary = payload?.summary || payload?.stats || payload?.statistics || payload?.metrics || payload?.scanSummary || {}
+  const severityCounts = summary?.severityCounts || payload?.severityCounts || payload?.severity_counts || {}
+  const fallbackCounts = findings.reduce((accumulator, finding) => {
+    const severity = normalizeSeverity(finding.severity)
+    accumulator[severity] = (accumulator[severity] || 0) + 1
+    return accumulator
+  }, {})
+  const total = Number(summary.total ?? summary.totalFindings ?? summary.findings ?? findings.length) || 0
+  const critical = Number(summary.critical ?? severityCounts.Critical ?? severityCounts.critical ?? fallbackCounts.Critical ?? 0) || 0
+  const high = Number(summary.high ?? severityCounts.High ?? severityCounts.high ?? fallbackCounts.High ?? 0) || 0
+  const medium = Number(summary.medium ?? severityCounts.Medium ?? severityCounts.medium ?? fallbackCounts.Medium ?? 0) || 0
+  const low = Number(summary.low ?? severityCounts.Low ?? severityCounts.low ?? fallbackCounts.Low ?? 0) || 0
+  const info = Number(summary.info ?? severityCounts.Info ?? severityCounts.info ?? fallbackCounts.Info ?? 0) || 0
+  const categories = Number(summary.categories ?? summary.owaspCategories ?? summary.categoryCount ?? new Set(findings.map(vuln => vuln.category).filter(Boolean)).size) || 0
+  const withSuggestions = Number(summary.withSuggestions ?? summary.fixable ?? summary.actionable ?? findings.filter(vuln => vuln.suggestion || vuln.fixSnippet).length) || 0
+  const actionableRate = Number(summary.actionableRate ?? summary.fixableRate ?? (total ? Math.round((withSuggestions / total) * 100) : 0)) || 0
+  const securityScore = Number(summary.securityScore ?? summary.score ?? summary.healthScore ?? (total ? Math.max(0, 100 - (critical * 18) - (high * 10) - (medium * 5) - (low * 2)) : 100)) || 0
+
+  return {
+    total,
+    critical,
+    high,
+    medium,
+    low,
+    info,
+    categories,
+    withSuggestions,
+    actionableRate,
+    securityScore,
+    payload,
+  }
+}
+
+const buildThreatFeed = (payload, findings) => {
+  const feed = payload?.alerts || payload?.notifications || payload?.events || payload?.activity || payload?.feed
+
+  if (Array.isArray(feed) && feed.length > 0) {
+    return feed.slice(0, 4).map((item, index) => ({
+      id: item.id || item.key || index,
+      msg: item.msg || item.message || item.title || item.description || 'Backend alert received',
+      severity: normalizeSeverity(item.severity || item.priority),
+      time: item.time || item.timestamp || item.label || 'Live',
+    }))
+  }
+
+  if (findings.length === 0) {
+    return [
+      {
+        id: 'idle',
+        msg: 'Awaiting scan results from /scan or /scan-local',
+        severity: 'Info',
+        time: 'Ready',
+      },
+    ]
+  }
+
+  return findings.slice(0, 4).map((finding, index) => ({
+    id: finding.id || index,
+    msg: `${finding.severity} ${finding.title}${finding.file ? ` in ${finding.file}${finding.line !== null ? `:${finding.line}` : ''}` : ''}`,
+    severity: finding.severity,
+    time: finding.category || finding.ruleId || 'Current scan',
+  }))
+}
+
+const isLocalSource = (source) => {
+  if (!source) return false
+  return !/^https?:\/\//i.test(source) && !source.includes('github.com')
+}
+
+const buildScanEndpoints = (source, preferredMode) => {
+  const preferredIsLocal = preferredMode === 'local' || (!preferredMode && isLocalSource(source))
+  const primary = preferredIsLocal ? '/scan-local' : '/scan'
+  const fallback = primary === '/scan' ? '/scan-local' : '/scan'
+  return [primary, fallback]
+}
+
+const parseResponseBody = async (response) => {
+  const text = await response.text()
+
+  if (!text) return {}
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { message: text }
+  }
+}
+
+const fetchScanResults = async (source, signal, preferredMode) => {
+  let lastError = null
+
+  for (const endpoint of buildScanEndpoints(source, preferredMode)) {
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl: source, repo_url: source, source }),
+        signal,
+      })
+
+      if (!response.ok) {
+        const body = await parseResponseBody(response)
+        throw new Error(body?.message || `Request failed with ${response.status}`)
+      }
+
+      const payload = await parseResponseBody(response)
+      return {
+        endpoint,
+        findings: extractFindings(payload),
+        payload,
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') throw error
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('Unable to load scan results.')
+}
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -164,15 +304,21 @@ const NavItem = ({ icon, label, active = false, onClick, badge }) => (
   </motion.div>
 )
 
-const ThreatFeedTicker = () => {
+const ThreatFeedTicker = ({ items = [] }) => {
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
-    const t = setInterval(() => setIndex(i => (i + 1) % THREAT_FEED.length), 4000)
-    return () => clearInterval(t)
-  }, [])
+    if (!items.length) return undefined
 
-  const item = THREAT_FEED[index]
+    const t = setInterval(() => setIndex(i => (i + 1) % items.length), 4000)
+    return () => clearInterval(t)
+  }, [items])
+
+  const item = items[index % (items.length || 1)] || {
+    msg: 'Awaiting scan results from the backend',
+    severity: 'Info',
+    time: 'Ready',
+  }
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/3 border border-white/5 max-w-sm overflow-hidden">
@@ -200,26 +346,117 @@ const ThreatFeedTicker = () => {
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 
 const Dashboard = ({ repoUrl }) => {
-  const [selectedVuln, setSelectedVuln] = useState(null)
+  const [selectedVulnId, setSelectedVulnId] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [findings, setFindings] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [scanEndpoint, setScanEndpoint] = useState('')
+  const [scanPayload, setScanPayload] = useState(null)
+  const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
+  const [localFolderPath, setLocalFolderPath] = useState('')
+  const [scanSource, setScanSource] = useState(repoUrl || '')
 
-  const handleRefresh = () => {
+
+  const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
+    const controller = new AbortController()
+
     setIsRefreshing(true)
-    setTimeout(() => setIsRefreshing(false), 1200)
+    setIsLoading(true)
+    setLoadError('')
+
+    if (!source) {
+      setFindings([])
+      setScanEndpoint('')
+      setScanPayload(null)
+      setIsLoading(false)
+      setIsRefreshing(false)
+      return () => controller.abort()
+    }
+
+    try {
+      const { findings: nextFindings, endpoint, payload } = await fetchScanResults(source, controller.signal, preferredMode)
+      setFindings(nextFindings)
+      setScanEndpoint(endpoint)
+      setScanPayload(payload)
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setLoadError(error.message || 'Unable to load scan results.')
+        setFindings([])
+        setScanEndpoint('')
+        setScanPayload(null)
+      }
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+
+    return () => controller.abort()
   }
 
-  const repoName = repoUrl?.split('/').slice(-2).join('/') || 'Unknown Repo'
+  const handleRefresh = () => {
+    loadResults({ source: scanSource, preferredMode: scanEndpoint === '/scan-local' ? 'local' : 'remote' })
+  }
 
-  const filteredVulns = VULNERABILITIES.filter(v =>
+  const handleRemoteSubmit = (event) => {
+    event.preventDefault()
+    const nextSource = remoteRepoUrl.trim()
+    if (!nextSource) return
+    setScanSource(nextSource)
+    setActiveTab('overview')
+    loadResults({ source: nextSource, preferredMode: 'remote' })
+  }
+
+  const handleLocalSubmit = (event) => {
+    event.preventDefault()
+    const nextSource = localFolderPath.trim()
+    if (!nextSource) return
+    setScanSource(nextSource)
+    setActiveTab('overview')
+    loadResults({ source: nextSource, preferredMode: 'local' })
+  }
+
+  useEffect(() => {
+    if (!repoUrl?.trim()) {
+      setRemoteRepoUrl('')
+      setScanSource('')
+      setFindings([])
+      setScanEndpoint('')
+      setScanPayload(null)
+      setIsLoading(false)
+      setLoadError('')
+      return
+    }
+
+    const nextRepoUrl = repoUrl.trim()
+    setRemoteRepoUrl(nextRepoUrl)
+    setScanSource(nextRepoUrl)
+    loadResults({ source: nextRepoUrl, preferredMode: 'remote' })
+  }, [repoUrl])
+
+  const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'
+
+  const filteredVulns = findings.filter(v =>
     !searchQuery || v.title.toLowerCase().includes(searchQuery.toLowerCase()) || v.category.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const selectedVuln = useMemo(() => {
+    if (!findings.length) return null
+    return findings.find(vuln => vuln.id === selectedVulnId) || findings[0]
+  }, [findings, selectedVulnId])
+
+  const overviewStats = useMemo(() => extractSummary(scanPayload, findings), [scanPayload, findings])
+  const threatFeedItems = useMemo(() => buildThreatFeed(scanPayload, findings), [scanPayload, findings])
+
+  const scanLabel = scanEndpoint === '/scan-local' ? 'Local scan' : scanEndpoint === '/scan' ? 'Remote scan' : 'Scan pending'
+  const hasSearchResults = filteredVulns.length > 0
+
   const navItems = [
     { id: 'overview', icon: <LayoutDashboard size={17} />, label: 'Overview' },
-    { id: 'vulnerabilities', icon: <ShieldAlert size={17} />, label: 'Vulnerabilities', badge: VULNERABILITIES.filter(v => v.severity === 'Critical').length },
-    { id: 'notifications', icon: <Bell size={17} />, label: 'Notifications', badge: 4 },
+    { id: 'vulnerabilities', icon: <ShieldAlert size={17} />, label: 'Vulnerabilities', badge: overviewStats.critical || undefined },
+    { id: 'notifications', icon: <Bell size={17} />, label: 'Notifications', badge: findings.length || undefined },
     { id: 'codebase', icon: <FileCode size={17} />, label: 'Codebase View' },
     { id: 'reports', icon: <BarChart size={17} />, label: 'Reports' },
   ]
@@ -263,6 +500,7 @@ const Dashboard = ({ repoUrl }) => {
         <div className="p-4 rounded-xl bg-white/3 border border-white/5">
           <div className="text-[10px] text-gray-600 uppercase font-bold tracking-widest mb-2">Scanning</div>
           <div className="text-xs font-mono text-blue-300 truncate">{repoName}</div>
+          <div className="mt-2 text-[10px] text-gray-500 uppercase tracking-[0.2em]">{scanLabel}</div>
         </div>
 
         {/* MCP Status */}
@@ -275,9 +513,9 @@ const Dashboard = ({ repoUrl }) => {
             <div className="text-[11px] text-green-400 font-semibold mb-3">Bob is Connected</div>
             <div className="space-y-1.5">
               {[
-                { label: 'Files Indexed', value: '1,284' },
-                { label: 'Functions Mapped', value: '9,471' },
-                { label: 'OWASP Coverage', value: '94%' },
+                { label: 'Findings', value: String(overviewStats.total) },
+                { label: 'Critical', value: String(overviewStats.critical) },
+                { label: 'Fixable', value: `${overviewStats.actionableRate}%` },
               ].map(m => (
                 <div key={m.label} className="flex justify-between text-[10px]">
                   <span className="text-gray-600">{m.label}</span>
@@ -299,7 +537,10 @@ const Dashboard = ({ repoUrl }) => {
               <h1 className="text-base font-bold">Project Analysis</h1>
               <div className="text-xs text-gray-500 font-mono">{repoName}</div>
             </div>
-            <ThreatFeedTicker />
+            <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/8 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">
+              {scanLabel}
+            </div>
+            <ThreatFeedTicker items={threatFeedItems} />
           </div>
 
           <div className="flex items-center gap-3">
@@ -348,6 +589,100 @@ const Dashboard = ({ repoUrl }) => {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          <div className="mb-6 grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
+            <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-5 shadow-[0_0_40px_rgba(15,23,42,0.2)]">
+              <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-400 mb-2">Scan launcher</div>
+                  <h2 className="text-lg font-bold text-white">Run a remote repo scan or a local folder scan</h2>
+                  <p className="text-sm text-gray-500 mt-1">Remote inputs use <span className="text-gray-300">/scan</span>. Local folder paths use <span className="text-gray-300">/scan-local</span>.</p>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3 min-w-[170px]">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-1">Total findings</div>
+                  <div className="text-3xl font-black text-white">{overviewStats.total}</div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <form onSubmit={handleRemoteSubmit} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Remote scan</div>
+                      <div className="text-sm text-gray-300 mt-1">Submit a repository URL</div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">POST /scan</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={remoteRepoUrl}
+                      onChange={e => setRemoteRepoUrl(e.target.value)}
+                      placeholder="https://github.com/org/repo"
+                      className="flex-1 bg-black/20 border border-white/8 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500/50 placeholder:text-gray-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!remoteRepoUrl.trim() || isRefreshing}
+                      className="px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading && scanEndpoint === '/scan' ? 'Scanning...' : 'Scan'}
+                    </button>
+                  </div>
+                </form>
+
+                <form onSubmit={handleLocalSubmit} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">Local test</div>
+                      <div className="text-sm text-gray-300 mt-1">Submit a local folder path</div>
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">POST /scan-local</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={localFolderPath}
+                      onChange={e => setLocalFolderPath(e.target.value)}
+                      placeholder="C:\\Users\\appus\\Projects\\bobguard"
+                      className="flex-1 bg-black/20 border border-white/8 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500/50 placeholder:text-gray-600"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!localFolderPath.trim() || isRefreshing}
+                      className="px-4 py-3 rounded-xl bg-cyan-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isLoading && scanEndpoint === '/scan-local' ? 'Scanning...' : 'Test'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-5">
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-500 mb-4">Scan summary</div>
+              <div className="space-y-3">
+                {[
+                  { label: 'Active source', value: scanSource || 'None selected' },
+                  { label: 'Endpoint', value: scanEndpoint || 'Not started' },
+                  { label: 'Severity groups', value: String(new Set(findings.map(item => item.severity).filter(Boolean)).size) },
+                  { label: 'OWASP mappings', value: String(new Set(findings.map(item => item.category).filter(Boolean)).size) },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center justify-between gap-4 rounded-2xl border border-white/8 bg-black/20 px-4 py-3">
+                    <span className="text-xs text-gray-500 uppercase tracking-[0.2em]">{item.label}</span>
+                    <span className="text-sm font-semibold text-white truncate max-w-[180px] text-right">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {loadError && findings.length > 0 && (
+            <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-100 flex items-center justify-between gap-4">
+              <span>Last scan returned an error while refreshing results: {loadError}</span>
+              <button onClick={handleRefresh} className="px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-xs font-bold uppercase tracking-widest shrink-0">Retry</button>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
 
             {/* ── Overview ── */}
@@ -355,10 +690,10 @@ const Dashboard = ({ repoUrl }) => {
               <motion.div key="overview" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
                 {/* Stat Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
-                  <StatCard label="Total Risks" value="12" icon={<ShieldAlert size={20} className="text-red-400" />} color="red" trend="+2" subtext="vs last scan" />
-                  <StatCard label="OWASP Categories" value="6" icon={<BarChart size={20} className="text-blue-400" />} color="blue" />
-                  <StatCard label="Ready to Fix" value="8" icon={<CheckCircle size={20} className="text-green-400" />} color="green" trend="67%" />
-                  <StatCard label="Critical Issues" value="2" icon={<AlertTriangle size={20} className="text-orange-400" />} color="orange" subtext="Immediate action" />
+                  <StatCard label="Total Risks" value={String(overviewStats.total)} icon={<ShieldAlert size={20} className="text-red-400" />} color="red" trend={overviewStats.total ? `${overviewStats.high + overviewStats.critical}` : undefined} subtext="vs last scan" />
+                  <StatCard label="OWASP Categories" value={String(overviewStats.categories)} icon={<BarChart size={20} className="text-blue-400" />} color="blue" />
+                  <StatCard label="Ready to Fix" value={String(overviewStats.withSuggestions)} icon={<CheckCircle size={20} className="text-green-400" />} color="green" trend={overviewStats.actionableRate ? `${overviewStats.actionableRate}%` : undefined} />
+                  <StatCard label="Critical Issues" value={String(overviewStats.critical)} icon={<AlertTriangle size={20} className="text-orange-400" />} color="orange" subtext="Immediate action" />
                 </div>
 
                 {/* Split View */}
@@ -369,25 +704,25 @@ const Dashboard = ({ repoUrl }) => {
                       <h3 className="text-lg font-bold">Identified Vulnerabilities</h3>
                       <span className="text-xs text-gray-500">{filteredVulns.length} found</span>
                     </div>
-                    {filteredVulns.length === 0 ? (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex flex-col items-center justify-center text-center p-12 rounded-3xl border border-dashed border-green-500/30 bg-green-500/5 mt-4"
-                      >
-                        <motion.div
-                          animate={{ scale: [1, 1.1, 1] }}
-                          transition={{ repeat: Infinity, duration: 2 }}
-                          className="mb-6 p-4 rounded-full bg-green-500/10 shadow-[0_0_20px_rgba(34,197,94,0.15)]"
-                        >
-                          <ShieldCheck size={48} className="text-green-400" />
-                        </motion.div>
-                        <h3 className="text-xl font-bold mb-2 text-green-400">No vulnerabilities detected!</h3>
-                        <p className="text-sm text-gray-400 leading-relaxed max-w-[280px]">
-                          Your repository is secure. We couldn't find any critical or high-severity issues. Keep up the great work!
-                        </p>
-                      </motion.div>
-                    ) : (
+                    {isLoading && !findings.length ? (
+                      <div className="space-y-3">
+                        {[0, 1, 2].map(index => (
+                          <div key={index} className="p-5 rounded-2xl border border-white/5 bg-white/2 animate-pulse">
+                            <div className="h-4 w-40 rounded bg-white/10 mb-4" />
+                            <div className="h-3 w-3/4 rounded bg-white/10 mb-3" />
+                            <div className="h-3 w-1/2 rounded bg-white/10" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : loadError && !findings.length ? (
+                      <div className="p-6 rounded-3xl border border-red-500/20 bg-red-500/5 text-sm text-red-200">
+                        <div className="font-semibold mb-2">Scan failed</div>
+                        <p className="text-red-100/70 mb-4">{loadError}</p>
+                        <button onClick={handleRefresh} className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-red-100 text-xs font-bold uppercase tracking-widest">
+                          Retry scan
+                        </button>
+                      </div>
+                    ) : hasSearchResults ? (
                       <motion.div
                         variants={{ hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } }}
                         initial="hidden"
@@ -399,11 +734,12 @@ const Dashboard = ({ repoUrl }) => {
                             key={vuln.id}
                             variants={{ hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0 } }}
                             whileHover={{ scale: 1.01, x: 2 }}
-                            onClick={() => setSelectedVuln(vuln)}
-                            className={`p-5 rounded-2xl border cursor-pointer group transition-all ${selectedVuln?.id === vuln.id
+                            onClick={() => setSelectedVulnId(vuln.id)}
+                            className={`p-5 rounded-2xl border cursor-pointer group transition-all ${
+                              selectedVuln?.id === vuln.id
                                 ? 'bg-blue-600/8 border-blue-500/40 ring-1 ring-blue-500/30 shadow-[0_0_20px_rgba(37,99,235,0.08)]'
                                 : 'bg-white/2 border-white/5 hover:border-white/10 hover:bg-white/4'
-                              }`}
+                            }`}
                           >
                             <div className="flex items-center justify-between mb-2.5">
                               <div className="flex items-center gap-2.5">
@@ -415,13 +751,31 @@ const Dashboard = ({ repoUrl }) => {
                                 className={`text-gray-600 group-hover:text-gray-400 transition-all ${selectedVuln?.id === vuln.id ? 'rotate-90 text-blue-400' : ''}`}
                               />
                             </div>
-                            <div className="flex items-center gap-5 text-xs text-gray-600 font-mono">
-                              <span className="flex items-center gap-1.5"><Terminal size={12} /> {vuln.file}:{vuln.line}</span>
+                            <div className="flex flex-wrap items-center gap-5 text-xs text-gray-600 font-mono mb-3">
+                              <span className="flex items-center gap-1.5"><Terminal size={12} /> {vuln.file}{vuln.line !== null ? `:${vuln.line}` : ''}</span>
                               <span className="flex items-center gap-1.5"><ShieldCheck size={12} /> {vuln.category}</span>
                             </div>
+                            <p className="text-sm text-gray-300/80 leading-relaxed mb-2">{vuln.description}</p>
+                            {vuln.suggestion && (
+                              <p className="text-xs text-blue-300/80 leading-relaxed">
+                                Suggestion: {vuln.suggestion}
+                              </p>
+                            )}
                           </motion.div>
                         ))}
                       </motion.div>
+                    ) : (
+                      <div className="p-8 rounded-3xl border border-dashed border-white/10 bg-white/2 text-center text-gray-500">
+                        <ShieldCheck size={32} className="mx-auto mb-3 opacity-60" />
+                        <h4 className="text-base font-bold text-gray-300 mb-2">
+                          {searchQuery ? 'No matching findings' : 'No findings yet'}
+                        </h4>
+                        <p className="text-sm max-w-md mx-auto leading-relaxed">
+                          {searchQuery
+                            ? 'Try a broader search term or clear the filter to inspect the full scan output.'
+                            : 'The scan endpoint returned no actionable findings for this repository.'}
+                        </p>
+                      </div>
                     )}
                   </div>
 
@@ -441,6 +795,12 @@ const Dashboard = ({ repoUrl }) => {
                             onApplyFix={v => console.log('Applying fix for:', v.title)}
                           />
                         </motion.div>
+                      ) : isLoading && findings.length ? (
+                        <div className="h-[520px] flex flex-col items-center justify-center text-center p-8 rounded-3xl border border-white/8 bg-white/[0.02] text-gray-500">
+                          <div className="w-10 h-10 rounded-full border-2 border-blue-500/30 border-t-blue-400 animate-spin mb-4" />
+                          <h3 className="text-base font-bold mb-2 text-gray-300">Refreshing findings</h3>
+                          <p className="text-sm max-w-[220px] leading-relaxed">Bob is updating the dashboard with the latest scan output.</p>
+                        </div>
                       ) : (
                         <motion.div
                           initial={{ opacity: 0 }}
@@ -465,7 +825,17 @@ const Dashboard = ({ repoUrl }) => {
               <motion.div key="vulnerabilities" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
                 <div className="flex gap-6">
                   <div className="flex-1 min-w-0">
-                    <Vulnerabilities vulnerabilities={filteredVulns} onSelect={setSelectedVuln} selectedId={selectedVuln?.id} />
+                    {isLoading && !findings.length ? (
+                      <div className="h-[420px] rounded-3xl border border-white/8 bg-white/[0.02] animate-pulse" />
+                    ) : loadError && !findings.length ? (
+                      <div className="p-8 rounded-3xl border border-red-500/20 bg-red-500/5 text-red-100">
+                        <h3 className="text-lg font-bold mb-2">Unable to load scan results</h3>
+                        <p className="text-sm text-red-100/70 mb-4">{loadError}</p>
+                        <button onClick={handleRefresh} className="px-4 py-2 rounded-xl bg-red-500/15 border border-red-500/20 text-xs font-bold uppercase tracking-widest">Retry</button>
+                      </div>
+                    ) : (
+                      <Vulnerabilities vulnerabilities={filteredVulns} onSelect={vuln => setSelectedVulnId(vuln.id)} selectedId={selectedVuln?.id} />
+                    )}
                   </div>
                   <div className="w-[460px] shrink-0">
                     <AnimatePresence mode="wait">
@@ -482,6 +852,8 @@ const Dashboard = ({ repoUrl }) => {
                             onApplyFix={v => console.log('Applying fix for:', v.title)}
                           />
                         </motion.div>
+                      ) : isLoading && findings.length ? (
+                        <div className="h-[600px] rounded-3xl border border-white/8 bg-white/[0.02] animate-pulse" />
                       ) : (
                         <div className="h-[600px] flex flex-col items-center justify-center text-center p-8 rounded-3xl border border-dashed border-white/8 text-gray-600">
                           <div className="float mb-6"><ShieldCheck size={56} className="opacity-15" /></div>
@@ -505,14 +877,14 @@ const Dashboard = ({ repoUrl }) => {
             {/* ── Notifications ── */}
             {activeTab === 'notifications' && (
               <motion.div key="notifications" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-                <Notifications />
+                <Notifications findings={findings} summary={overviewStats} loading={isLoading} error={loadError} source={scanSource} />
               </motion.div>
             )}
 
             {/* ── Reports ── */}
             {activeTab === 'reports' && (
               <motion.div key="reports" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}>
-                <Reports />
+                <Reports findings={findings} summary={overviewStats} loading={isLoading} error={loadError} source={scanSource} />
               </motion.div>
             )}
 
