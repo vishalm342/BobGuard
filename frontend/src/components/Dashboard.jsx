@@ -383,6 +383,11 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
       controller.abort()
     }, SCAN_TIMEOUT_MS)
 
+    // Clear stale findings immediately so the UI never shows old data
+    setFindings([])
+    setScanEndpoint('')
+    setScanPayload(null)
+    setLoadError('')
     setIsRefreshing(true)
     setIsLoading(true)
     setLoadError('')
@@ -457,6 +462,11 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
     setScanStatus('submitting')
     loadResults({ source: nextSource, preferredMode: 'local' })
   }
+
+  // Guard: only trigger a fetch from this effect when we do NOT already have
+  // results from the Scanner page (initialScanResult). If Scanner already
+  // fetched for this repoUrl we skip the request entirely.
+  const initialResultRef = useRef(initialScanResult)
 
   useEffect(() => {
     if (!repoUrl?.trim()) {

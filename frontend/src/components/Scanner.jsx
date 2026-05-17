@@ -2,12 +2,43 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Database, ShieldCheck, Cpu, Lock, Terminal } from 'lucide-react'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
+
+// ── Helpers shared with the fetch ───────────────────────────────────────────
+
+const isLocalSource = (source) => {
+  if (!source) return false
+  return !/^https?:\/\//i.test(source) && !source.includes('github.com')
+}
+
+const parseResponseBody = async (response) => {
+  const text = await response.text()
+  if (!text) return {}
+  try { return JSON.parse(text) } catch { return { message: text } }
+}
+
+const extractFindings = (payload) => {
+  const candidates = [
+    payload?.findings,
+    payload?.vulnerabilities,
+    payload?.issues,
+    payload?.results,
+    payload?.scan?.findings,
+    payload?.data,
+    payload,
+  ]
+  const rawFindings = candidates.find(c => Array.isArray(c)) || []
+  return rawFindings
+}
+
+// ── Visual sub-components (unchanged) ───────────────────────────────────────
+
 const FallingCodeStream = () => {
   const columns = useMemo(() => Array.from({ length: 20 }, () => ({
     left: `${Math.random() * 100}%`,
     duration: 5 + Math.random() * 10,
     delay: Math.random() * 5,
-    chars: Array.from({ length: 15 }, () => 
+    chars: Array.from({ length: 15 }, () =>
       Math.random() > 0.5 ? Math.floor(Math.random() * 2) : String.fromCharCode(65 + Math.floor(Math.random() * 26))
     )
   })), [])
@@ -100,67 +131,122 @@ const PulsingLogo = () => {
   )
 }
 
-const Scanner = ({ repoUrl, onComplete }) => {
-  const [progress, setProgress] = useState(0)
-  const [status, setStatus] = useState('Initializing MCP session...')
-  const hasCompletedRef = useRef(false)
+// ── Main Scanner ─────────────────────────────────────────────────────────────
 
-  const intervalRef = useRef(null)
+/**
+ * Scanner performs the real HTTP fetch and drives the progress bar from it.
+ * Props:
+ *   repoUrl   – the source to scan (URL or local path)
+ *   onComplete(result) – called with { endpoint, findings, payload } on success
+ *   onError()          – called when the fetch fails or backend is unreachable
+ */
+const Scanner = ({ repoUrl, onComplete, onError }) => {
+  const [progress, setProgress] = useState(0)
+  const [status, setStatus] = useState('Initializing scan...')
+
+  const animFrameRef = useRef(null)
+  const resolvedRef = useRef(false)
+
+  const statuses = [
+    'Initializing scan...',
+    'Connecting to backend...',
+    'Reading project structure...',
+    'Bob is ingesting the codebase via MCP...',
+    'Mapping functions to OWASP Top 10...',
+    'Identifying security patterns...',
+    'Generating prioritized report...',
+  ]
+
+  // Animate progress smoothly up to a cap while the fetch is in-flight,
+  // then jump to 100 when the fetch resolves.
+  const progressRef = useRef(0)
+  const targetRef = useRef(80) // animate freely up to 80 %, then wait for real response
 
   useEffect(() => {
-    const statuses = [
-      'Initializing MCP session...',
-      'Connecting to GitHub API...',
-      'Reading project structure...',
-      'Bob is ingesting the full codebase via MCP...',
-      'Mapping functions to OWASP Top 10...',
-      'Identifying security patterns...',
-      'Generating prioritized report...'
-    ]
+    let rafId
+    const tick = () => {
+      if (progressRef.current < targetRef.current) {
+        // Ease toward target
+        progressRef.current = Math.min(
+          progressRef.current + Math.random() * 0.6 + 0.2,
+          targetRef.current
+        )
+        const rounded = Math.round(progressRef.current)
+        setProgress(rounded)
+        const statusIdx = Math.min(
+          Math.floor((progressRef.current / 100) * statuses.length),
+          statuses.length - 1
+        )
+        setStatus(statuses[statusIdx])
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    animFrameRef.current = rafId
+    return () => cancelAnimationFrame(rafId)
+  }, []) // run once on mount
 
-    let currentStatus = 0
-    intervalRef.current = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
+  // ── Real fetch ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!repoUrl) {
+      onError?.()
+      return
+    }
+
+    const controller = new AbortController()
+
+    const doFetch = async () => {
+      const isLocal =
+        !/^https?:\/\//i.test(repoUrl) && !repoUrl.includes('github.com')
+      const primary = isLocal ? '/scan-local' : '/scan'
+      const fallback = isLocal ? '/scan' : '/scan-local'
+
+      let lastError = null
+
+      for (const endpoint of [primary, fallback]) {
+        try {
+          const response = await fetch(`${API_BASE}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repoUrl, repo_url: repoUrl, source: repoUrl, folder_path: repoUrl }),
+            signal: controller.signal,
+          })
+
+          if (!response.ok) {
+            const body = await parseResponseBody(response)
+            throw new Error(body?.detail || body?.message || `Request failed with ${response.status}`)
           }
-          return 100
-        }
 
-        const statusIdx = Math.min(Math.floor((prev / 100) * statuses.length), statuses.length - 1)
-        if (statusIdx > currentStatus) {
-          currentStatus = statusIdx
-          setStatus(statuses[statusIdx])
-        }
+          const payload = await parseResponseBody(response)
+          if (resolvedRef.current) return
+          resolvedRef.current = true
 
-        const next = prev + Math.random() * 1.5
-        return next
-      })
-    }, 80)
+          // Animate to 100 % then call onComplete
+          targetRef.current = 100
+          progressRef.current = 99
+          setProgress(100)
+          setStatus('Generating prioritized report...')
+          await new Promise(r => setTimeout(r, 500))
+          onComplete?.({ endpoint, findings: extractFindings(payload), payload })
+          return
+        } catch (error) {
+          if (error.name === 'AbortError') return
+          lastError = error
+        }
+      }
+
+      // Both endpoints failed
+      if (resolvedRef.current) return
+      resolvedRef.current = true
+      onError?.()
+    }
+
+    doFetch()
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
+      controller.abort()
     }
-  }, [])
-
-  useEffect(() => {
-    // Use rounded progress to avoid the UI showing 100% due to rounding
-    if (Math.round(progress) < 100 || hasCompletedRef.current || !onComplete) return undefined
-
-    hasCompletedRef.current = true
-    // clear the progress interval so it doesn't re-run and clear our timeout
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-    const timer = setTimeout(() => onComplete(), 600)
-    return () => clearTimeout(timer)
-  }, [progress, onComplete])
+  }, [repoUrl]) // intentionally depends only on repoUrl – fires once per scan
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen px-4 bg-[#0a0a0c] overflow-hidden text-white">
@@ -249,4 +335,3 @@ const Scanner = ({ repoUrl, onComplete }) => {
 }
 
 export default Scanner
-
