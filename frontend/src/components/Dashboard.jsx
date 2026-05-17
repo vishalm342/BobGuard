@@ -466,8 +466,6 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
   // Guard: only trigger a fetch from this effect when we do NOT already have
   // results from the Scanner page (initialScanResult). If Scanner already
   // fetched for this repoUrl we skip the request entirely.
-  const initialResultRef = useRef(initialScanResult)
-
   useEffect(() => {
     if (!repoUrl?.trim()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
