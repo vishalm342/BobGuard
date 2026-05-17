@@ -1,6 +1,6 @@
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, Eye, EyeOff, Mail, User, Lock,
@@ -28,7 +28,10 @@ const AnimatedBackground = () => (
   </div>
 )
 
-/* ─── Floating Particles ──────────────────────────────────────────────────── */
+/* const SignUp = () => {
+  const navigate = useNavigate(); // <--- Add this line
+  
+  // Keep all your other state and animation logic here...const SignUp = () => {
 const FloatingParticles = () => {
   const particles = Array.from({ length: 20 }, (_, i) => ({
     id: i,
@@ -286,7 +289,7 @@ const SignUp = ({ onSignUp }) => {
                 <h2 className="text-[26px] font-black text-white mb-1.5 tracking-tight">Create your account</h2>
                 <p className="text-sm text-gray-500">
                   Already have one?{' '}
-                  <Link to="/signin" className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">Sign in</Link>
+                  <button className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">Sign in</button>
                 </p>
               </div>
 
@@ -352,13 +355,41 @@ const SignUp = ({ onSignUp }) => {
 
                     {/* OAuth */}
                     <div className="grid grid-cols-2 gap-3">
-                      {[{ label: 'GitHub', logo: 'GH' }, { label: 'Microsoft', logo: 'MS' }].map(p => (
-                        <motion.button key={p.label} type="button"
+                      {[
+                        {
+                          label: 'GitHub',
+                          badge: 'GH',
+                          buttonClass: 'bg-white/[0.03] border-white/[0.07] text-gray-300 hover:text-white',
+                          badgeClass: 'bg-white/10 text-white',
+                        },
+                        {
+                          label: 'Google',
+                          badge: 'G',
+                          buttonClass: 'bg-white text-slate-900 border-white/20 hover:bg-gray-100',
+                          badgeClass: 'bg-[conic-gradient(from_180deg,#ea4335_0deg_90deg,#fbbc05_90deg_180deg,#34a853_180deg_270deg,#4285f4_270deg_360deg)] p-[1px]',
+                        },
+                      ].map(p => (
+                        <motion.button key={p.label} type="button" disabled aria-disabled="true"
                           whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.06)' }}
                           whileTap={{ scale: 0.97 }}
-                          className="flex items-center justify-center gap-2.5 py-3 rounded-xl bg-white/[0.03] border border-white/[0.07] text-sm font-semibold text-gray-300 hover:text-white transition-all">
-                          <span className="text-[10px] font-black bg-white/15 px-1.5 py-0.5 rounded-md">{p.logo}</span>
-                          {p.label}
+                          className={`flex items-center justify-center gap-2.5 py-3 rounded-xl border text-sm font-semibold transition-all opacity-90 cursor-not-allowed ${p.buttonClass}`}>
+                          {p.label === 'Google' ? (
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white p-[1px] shadow-sm">
+                              <span className="flex h-full w-full items-center justify-center rounded-full bg-[conic-gradient(from_180deg,#ea4335_0deg_90deg,#fbbc05_90deg_180deg,#34a853_180deg_270deg,#4285f4_270deg_360deg)] text-[9px] font-black text-white">
+                                G
+                              </span>
+                            </span>
+                          ) : (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${p.badgeClass}`}>
+                              {p.badge}
+                            </span>
+                          )}
+                          <span className="flex flex-col items-start leading-tight">
+                            <span>{p.label}</span>
+                            <span className={`text-[10px] uppercase tracking-[0.2em] ${p.label === 'Google' ? 'text-slate-500' : 'text-gray-500'}`}>
+                              Coming soon
+                            </span>
+                          </span>
                         </motion.button>
                       ))}
                     </div>
@@ -394,3 +425,22 @@ const SignUp = ({ onSignUp }) => {
 }
 
 export default SignUp
+import { useNavigate } from 'react-router-dom';
+
+// ... inside your SignUp component function:
+const navigate = useNavigate();
+
+const handleSignUp = () => {
+  // This line tells the browser to go to the dashboard page
+  navigate('/dashboard');
+};
+
+// ... then find your button and add the click handler:
+<button onClick={handleSignUp} className="...">
+  Create Account
+  <button
+    onClick={() => navigate('/dashboard')}
+    className="your-existing-tailwind-classes"
+  >
+    Create Account
+  </button>

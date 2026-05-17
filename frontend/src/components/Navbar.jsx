@@ -15,7 +15,7 @@ const Navbar = () => {
               Cafe
             </span>
           </div>
-          
+
           {/* Desktop Menu */}
           <div className="hidden md:flex space-x-8 items-center">
             <a href="#home" className="text-wood hover:text-green transition-colors duration-300 font-medium">Home</a>
@@ -64,3 +64,10 @@ const Navbar = () => {
 };
 
 export default Navbar;
+import { Link } from 'react-router-dom';
+
+// Use this instead of regular <div> or <button> for your menu items:
+<Link to="/dashboard">Overview</Link>
+<Link to="/vulnerabilities">Vulnerabilities</Link>
+<Link to="/notifications">Notifications</Link>
+
