@@ -5,11 +5,15 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    watch: {
+      ignored: ['**/backend/**', '**/node_modules/**']
+    },
     proxy: {
-      '/scan': 'http://localhost:5000',
-      '/scan-local': 'http://localhost:5000',
-      '/bookings': 'http://localhost:5000',
-      '/menu': 'http://localhost:5000',
+      '/scan': 'http://localhost:8000',
+      '/scan-local': 'http://localhost:8000',
+      '/bob': 'http://localhost:8000',
+      '/bookings': 'http://localhost:8000',
+      '/menu': 'http://localhost:8000',
     },
   },
 })
