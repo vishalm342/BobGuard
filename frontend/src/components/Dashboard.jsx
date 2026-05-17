@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   LayoutDashboard,
   ShieldAlert,
@@ -366,7 +366,7 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
   const initialResultRef = useRef(initialScanResult)
 
 
-  const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
+  const loadResults = useCallback(async ({ source = scanSource, preferredMode } = {}) => {
     const requestId = ++scanRequestIdRef.current
     if (abortRef.current) {
       abortRef.current.abort()
@@ -393,7 +393,8 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
       setIsRefreshing(false)
       setScanStatus('idle')
       window.clearTimeout(timeoutId)
-      return () => controller.abort()
+      controller.abort()
+      return
     }
 
     setFindings([])
@@ -404,7 +405,7 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
     try {
       setScanStatus('scanning')
       const { findings: nextFindings, endpoint, payload } = await fetchScanResults(source, controller.signal, preferredMode)
-      if (requestId !== scanRequestIdRef.current) return () => controller.abort()
+      if (requestId !== scanRequestIdRef.current) return
       setFindings(nextFindings)
       setScanEndpoint(endpoint)
       setScanPayload(payload)
@@ -419,13 +420,12 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
       }
     } finally {
       window.clearTimeout(timeoutId)
-      if (requestId !== scanRequestIdRef.current) return () => controller.abort()
-      setIsLoading(false)
-      setIsRefreshing(false)
+      if (requestId === scanRequestIdRef.current) {
+        setIsLoading(false)
+        setIsRefreshing(false)
+      }
     }
-
-    return () => controller.abort()
-  }
+  }, [scanSource])
 
   const handleRefresh = () => {
     if (isRefreshing || scanStatus === 'submitting' || scanStatus === 'scanning') return
@@ -455,6 +455,7 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
     loadResults({ source: nextSource, preferredMode: 'local' })
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!repoUrl?.trim()) {
       setRemoteRepoUrl('')
@@ -481,7 +482,8 @@ const Dashboard = ({ repoUrl, initialScanResult }) => {
     return () => {
       if (abortRef.current) abortRef.current.abort()
     }
-  }, [repoUrl])
+  }, [repoUrl, loadResults])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const repoName = scanSource?.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || 'No scan selected'
 
