@@ -13,6 +13,10 @@ app = FastAPI(title="BobGuard Backend", version="1.0.0")
 
 app.include_router(bob_router)
 
+origins = [
+    "http://localhost:5173", # For your local Vite dev server
+    "https://bob-guard.vercel.app" # Your deployed frontend
+]
 
 app.add_middleware(
     CORSMiddleware,
