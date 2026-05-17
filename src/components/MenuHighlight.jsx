@@ -31,7 +31,7 @@ const menuItems = [
   }
 ];
 
-const MenuHighlight = ({ onBookClick }) => {
+const MenuHighlight = () => {
   return (
     <section id="menu" className="py-24 bg-sand">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -46,9 +46,9 @@ const MenuHighlight = ({ onBookClick }) => {
           {menuItems.map((item, index) => (
             <div key={index} className="bg-sandLight rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 group flex flex-col">
               <div className="relative aspect-[4/3] w-full overflow-hidden shrink-0">
-                <img 
-                  src={item.image} 
-                  alt={item.name} 
+                <img
+                  src={item.image}
+                  alt={item.name}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 />
                 <div className="absolute top-4 right-4 bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-woodDark">
@@ -58,7 +58,7 @@ const MenuHighlight = ({ onBookClick }) => {
               <div className="p-6 relative">
                 {/* Decorative subtle arch in the card */}
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-green/20 rounded-b-lg"></div>
-                
+
                 <span className="text-xs uppercase tracking-wider text-green font-bold block mb-2">{item.category}</span>
                 <h3 className="text-xl font-bold text-woodDark mb-2">{item.name}</h3>
                 <p className="text-woodDark/70 text-sm leading-relaxed">{item.description}</p>
@@ -67,16 +67,10 @@ const MenuHighlight = ({ onBookClick }) => {
           ))}
         </div>
 
-        <div className="mt-16 text-center flex flex-col sm:flex-row justify-center gap-4">
+        <div className="mt-16 text-center">
           <button className="bg-transparent border-2 border-green text-green px-8 py-3 rounded-full hover:bg-green hover:text-white transition-colors duration-300 font-medium text-lg">
             View Full Menu
-          </button>
-          <button 
-            onClick={onBookClick}
-            className="bg-green border-2 border-green text-white px-8 py-3 rounded-full hover:bg-transparent hover:text-green transition-colors duration-300 font-medium text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-          >
-            Book a Table
-          </button>
+          </button> a
         </div>
       </div>
     </section>

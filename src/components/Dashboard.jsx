@@ -283,11 +283,10 @@ const NavItem = ({ icon, label, active = false, onClick, badge }) => (
     onClick={onClick}
     whileHover={{ scale: 1.04, backgroundColor: 'rgba(37, 99, 235, 0.12)', boxShadow: '0 0 20px rgba(37, 99, 235, 0.08)' }}
     whileTap={{ scale: 0.97 }}
-    className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all border ${
-      active
+    className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all border ${active
         ? 'bg-blue-600 text-white glow-blue border-blue-400/40'
         : 'text-gray-400 border-transparent hover:text-white'
-    }`}
+      }`}
   >
     <div className={active ? 'text-white' : 'text-gray-500'}>{icon}</div>
     <span className="font-semibold text-sm flex-1">{label}</span>
@@ -359,7 +358,7 @@ const Dashboard = ({ repoUrl }) => {
   const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
   const [localFolderPath, setLocalFolderPath] = useState('')
   const [scanSource, setScanSource] = useState(repoUrl || '')
-  
+
 
   const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
     const controller = new AbortController()
