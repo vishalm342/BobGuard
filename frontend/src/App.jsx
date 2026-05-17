@@ -58,7 +58,7 @@ function AnimatedRoutes() {
   const handleConnect = (url) => {
     setRepoUrl(url)
     setHasError(false)
-    navigate('/scanning')
+    navigate('/dashboard')
   }
 
   const handleScanComplete = () => {

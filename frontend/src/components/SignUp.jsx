@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import React, { useState, useEffect } from 'react'
+
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, Eye, EyeOff, Mail, User, Lock,
@@ -425,22 +425,3 @@ const SignUp = ({ onSignUp }) => {
 }
 
 export default SignUp
-import { useNavigate } from 'react-router-dom';
-
-// ... inside your SignUp component function:
-const navigate = useNavigate();
-
-const handleSignUp = () => {
-  // This line tells the browser to go to the dashboard page
-  navigate('/dashboard');
-};
-
-// ... then find your button and add the click handler:
-<button onClick={handleSignUp} className="...">
-  Create Account
-  <button
-    onClick={() => navigate('/dashboard')}
-    className="your-existing-tailwind-classes"
-  >
-    Create Account
-  </button>

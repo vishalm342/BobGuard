@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LayoutDashboard,
   ShieldAlert,
@@ -25,6 +25,7 @@ import Reports from './Reports'
 import Notifications from './Notifications'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
+const SCAN_TIMEOUT_MS = 120000
 
 // ── Data helpers ────────────────────────────────────────────────────────────
 
@@ -350,6 +351,7 @@ const Dashboard = ({ repoUrl }) => {
   const [activeTab, setActiveTab] = useState('overview')
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [scanStatus, setScanStatus] = useState('idle')
   const [findings, setFindings] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -358,37 +360,59 @@ const Dashboard = ({ repoUrl }) => {
   const [remoteRepoUrl, setRemoteRepoUrl] = useState(repoUrl || '')
   const [localFolderPath, setLocalFolderPath] = useState('')
   const [scanSource, setScanSource] = useState(repoUrl || '')
+  const scanRequestIdRef = useRef(0)
 
 
   const loadResults = async ({ source = scanSource, preferredMode } = {}) => {
+    const requestId = ++scanRequestIdRef.current
     const controller = new AbortController()
+    let timedOut = false
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, SCAN_TIMEOUT_MS)
 
     setIsRefreshing(true)
     setIsLoading(true)
     setLoadError('')
+    setScanStatus(source ? 'scanning' : 'idle')
 
     if (!source) {
       setFindings([])
       setScanEndpoint('')
       setScanPayload(null)
+      setSelectedVulnId(null)
       setIsLoading(false)
       setIsRefreshing(false)
+      setScanStatus('idle')
+      window.clearTimeout(timeoutId)
       return () => controller.abort()
     }
 
+    setFindings([])
+    setScanEndpoint('')
+    setScanPayload(null)
+    setSelectedVulnId(null)
+
     try {
+      setScanStatus('scanning')
       const { findings: nextFindings, endpoint, payload } = await fetchScanResults(source, controller.signal, preferredMode)
+      if (requestId !== scanRequestIdRef.current) return () => controller.abort()
       setFindings(nextFindings)
       setScanEndpoint(endpoint)
       setScanPayload(payload)
+      setScanStatus('success')
     } catch (error) {
-      if (error.name !== 'AbortError') {
-        setLoadError(error.message || 'Unable to load scan results.')
+      if (requestId === scanRequestIdRef.current && error.name !== 'AbortError') {
+        setScanStatus('error')
+        setLoadError(timedOut ? 'Scan timed out after 2 minutes. Large repositories can take 1 to 2 minutes.' : (error.message || 'Unable to load scan results.'))
         setFindings([])
         setScanEndpoint('')
         setScanPayload(null)
       }
     } finally {
+      window.clearTimeout(timeoutId)
+      if (requestId !== scanRequestIdRef.current) return () => controller.abort()
       setIsLoading(false)
       setIsRefreshing(false)
     }
@@ -397,24 +421,30 @@ const Dashboard = ({ repoUrl }) => {
   }
 
   const handleRefresh = () => {
+    if (isRefreshing || scanStatus === 'submitting' || scanStatus === 'scanning') return
+    setScanStatus('submitting')
     loadResults({ source: scanSource, preferredMode: scanEndpoint === '/scan-local' ? 'local' : 'remote' })
   }
 
   const handleRemoteSubmit = (event) => {
     event.preventDefault()
+    if (isRefreshing || scanStatus === 'submitting' || scanStatus === 'scanning') return
     const nextSource = remoteRepoUrl.trim()
     if (!nextSource) return
     setScanSource(nextSource)
     setActiveTab('overview')
+    setScanStatus('submitting')
     loadResults({ source: nextSource, preferredMode: 'remote' })
   }
 
   const handleLocalSubmit = (event) => {
     event.preventDefault()
+    if (isRefreshing || scanStatus === 'submitting' || scanStatus === 'scanning') return
     const nextSource = localFolderPath.trim()
     if (!nextSource) return
     setScanSource(nextSource)
     setActiveTab('overview')
+    setScanStatus('submitting')
     loadResults({ source: nextSource, preferredMode: 'local' })
   }
 
@@ -426,6 +456,7 @@ const Dashboard = ({ repoUrl }) => {
       setScanEndpoint('')
       setScanPayload(null)
       setIsLoading(false)
+      setScanStatus('idle')
       setLoadError('')
       return
     }
@@ -433,6 +464,7 @@ const Dashboard = ({ repoUrl }) => {
     const nextRepoUrl = repoUrl.trim()
     setRemoteRepoUrl(nextRepoUrl)
     setScanSource(nextRepoUrl)
+    setScanStatus('submitting')
     loadResults({ source: nextRepoUrl, preferredMode: 'remote' })
   }, [repoUrl])
 
@@ -451,6 +483,14 @@ const Dashboard = ({ repoUrl }) => {
   const threatFeedItems = useMemo(() => buildThreatFeed(scanPayload, findings), [scanPayload, findings])
 
   const scanLabel = scanEndpoint === '/scan-local' ? 'Local scan' : scanEndpoint === '/scan' ? 'Remote scan' : 'Scan pending'
+  const scanStatusText = {
+    idle: 'Ready to scan',
+    submitting: 'Submitting scan request',
+    scanning: 'Scanning repository',
+    success: 'Scan completed',
+    error: 'Scan failed',
+  }[scanStatus] || 'Ready to scan'
+  const isScanInFlight = isRefreshing || scanStatus === 'submitting' || scanStatus === 'scanning'
   const hasSearchResults = filteredVulns.length > 0
 
   const navItems = [
@@ -501,6 +541,9 @@ const Dashboard = ({ repoUrl }) => {
           <div className="text-[10px] text-gray-600 uppercase font-bold tracking-widest mb-2">Scanning</div>
           <div className="text-xs font-mono text-blue-300 truncate">{repoName}</div>
           <div className="mt-2 text-[10px] text-gray-500 uppercase tracking-[0.2em]">{scanLabel}</div>
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-[10px] uppercase tracking-[0.2em] ${scanStatus === 'error' ? 'border-red-500/20 bg-red-500/10 text-red-200' : scanStatus === 'success' ? 'border-green-500/20 bg-green-500/10 text-green-200' : 'border-white/5 bg-black/20 text-gray-400'}`}>
+            {scanStatusText}
+          </div>
         </div>
 
         {/* MCP Status */}
@@ -561,7 +604,8 @@ const Dashboard = ({ repoUrl }) => {
               onClick={handleRefresh}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="p-2 rounded-xl bg-white/5 border border-white/8 text-gray-400 hover:text-blue-400 hover:border-blue-500/30 transition-all"
+              disabled={isScanInFlight}
+              className="p-2 rounded-xl bg-white/5 border border-white/8 text-gray-400 hover:text-blue-400 hover:border-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
             </motion.button>
@@ -596,6 +640,7 @@ const Dashboard = ({ repoUrl }) => {
                   <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-400 mb-2">Scan launcher</div>
                   <h2 className="text-lg font-bold text-white">Run a remote repo scan or a local folder scan</h2>
                   <p className="text-sm text-gray-500 mt-1">Remote inputs use <span className="text-gray-300">/scan</span>. Local folder paths use <span className="text-gray-300">/scan-local</span>.</p>
+                  <p className="text-xs text-gray-500 mt-2">Scanning may take 1 to 2 minutes for large repos.</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-black/20 px-4 py-3 min-w-[170px]">
                   <div className="text-[10px] uppercase tracking-[0.2em] text-gray-500 mb-1">Total findings</div>
@@ -622,10 +667,10 @@ const Dashboard = ({ repoUrl }) => {
                     />
                     <button
                       type="submit"
-                      disabled={!remoteRepoUrl.trim() || isRefreshing}
+                      disabled={!remoteRepoUrl.trim() || isScanInFlight}
                       className="px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isLoading && scanEndpoint === '/scan' ? 'Scanning...' : 'Scan'}
+                      {scanStatus === 'submitting' ? 'Submitting...' : isScanInFlight ? 'Scanning...' : 'Scan'}
                     </button>
                   </div>
                 </form>
@@ -648,10 +693,10 @@ const Dashboard = ({ repoUrl }) => {
                     />
                     <button
                       type="submit"
-                      disabled={!localFolderPath.trim() || isRefreshing}
+                      disabled={!localFolderPath.trim() || isScanInFlight}
                       className="px-4 py-3 rounded-xl bg-cyan-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {isLoading && scanEndpoint === '/scan-local' ? 'Scanning...' : 'Test'}
+                      {scanStatus === 'submitting' ? 'Submitting...' : isScanInFlight ? 'Scanning...' : 'Test'}
                     </button>
                   </div>
                 </form>
