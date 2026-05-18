@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Database, ShieldCheck, Cpu, Lock, Terminal } from 'lucide-react'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
+const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
 // ── Helpers shared with the fetch ───────────────────────────────────────────
 

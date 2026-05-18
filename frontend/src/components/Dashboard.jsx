@@ -24,7 +24,7 @@ import Vulnerabilities from './Vulnerabilities'
 import Reports from './Reports'
 import Notifications from './Notifications'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
+const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 const SCAN_TIMEOUT_MS = 120000
 
 // ── Data helpers ────────────────────────────────────────────────────────────
