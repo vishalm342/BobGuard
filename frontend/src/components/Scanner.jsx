@@ -208,6 +208,7 @@ const Scanner = ({ repoUrl, onComplete, onError }) => {
           const response = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', // CRITICAL: This sends the cookie
             body: JSON.stringify({ repoUrl, repo_url: repoUrl, source: repoUrl, folder_path: repoUrl }),
             signal: controller.signal,
           })
